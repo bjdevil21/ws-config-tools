@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+
+## CONFIGURATIONS
+# You must set the following configurations before using this script!
+# IMPORTANT: Unless otherwise stated below, do NOT include leading or trailing slashes.
+
+# Local directory holding your Github.com projects (from ASUWebPlatforms), relative to your home directory
+# Example for /home/<userID>/github.com/ASUWebPlatforms/: PROJECTS_DIR=github.com/ASUWebPlatforms/
+PROJECTS_DIR=github.com/ASUWebPlatforms/
+# THe relative web site root from your OS's home folder (i.e. /Users/<MyASURITE>)
+# Example for /home/<userID>/my_sites/site1/web: my_sites/site1/web
+RELATIVE_WEB_ROOT=_sites_D9/ws-upstr/web
+# The local directory (destination) for exporting your current (live, not staged) configurations
+# NOTE: This must be a different than the site's existing config directory (usually at ../config from the web root)
+# because the script will be editing these files during script execution.
+# Example for /home/<userID>/your/temporary/conf/directory: CONF_EXPORT_DIR=your/temporary/conf/directory
+CONF_EXPORT_DIR=Desktop/active_configs
+# Because Drush needs a relative directory (vs. absolute), enter the levels up from the web root to
+# get to the $CONF_DIR set above. Going from the web root (from Drush's POV) should end up in $ABS_CONF_DIR.
+# Example: For /Users/<ASURITE>/my_sites/site1/web configs into /Users/<ASURITE>/your/working/conf/directory:
+# EXPORT_DIR_LEVEL=../../../
+# NOTE: Needs trailing slash
+EXPORT_DIR_LEVEL=../../../
+# (OPTIONAL) Different text editor application name, if desired.
+# Include the entire command required from the CLI in your OS to open the application.
+# Ex. VSCode on macOS: "open -a Visual\ Studio\ Code"
+# Ex. vi on Linux: "vi"
+#TEXT_EDITOR="/opt/sublime_text/sublime_text"
+TEXT_EDITOR="nano"
+
+###########################################
+# DO NOT CHANGE ANYTHING BELOW THIS LINE
+###########################################
+COMMANDS_FILE=_ws2_diff_commands.bash
+DIFFS=_configs.diff
+MANUAL_DIFF_REVIEW=0
+CHECK_MOD_INSTALL=0
+_V=0
+WEB_ROOT=${USER_DIR_ROOT}/${RELATIVE_WEB_ROOT}
+ABS_CONF_EXPORT_DIR=${USER_DIR_ROOT}${CONF_EXPORT_DIR} # Absolute configs directory
+GH_PROJECTS_DIR=${USER_DIR_ROOT}${PROJECTS_DIR}
+DRUSH_EXPORT_DIR=${EXPORT_DIR_LEVEL}${CONF_EXPORT_DIR} # Drush export directory
+RUN_DRUSH_EXPORT=0
+
+# Bash script version
+VERSION=0.1.0
+
+export TEXT_EDITOR
+export COMMANDS_FILE DIFFS MANUAL_DIFF_REVIEW CHECK_MOD_INSTALL _V
+export WEB_ROOT ABS_CONF_EXPORT_DIR CONF_EXPORT_DIR GH_PROJECTS_DIR DRUSH_EXPORT_DIR RUN_DRUSH_EXPORT VERSION
