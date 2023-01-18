@@ -158,7 +158,6 @@ if [[ -d ${ABS_SRC_DIR}/config/install ]]; then
   printf "Hit Return/Enter to continue (or Ctrl-C to stop and change Git branches): \n"
   read -r GitStop
 
-  # @TODO - Add Git branch - Continue Y/N input
   Log "Comparing %s and %s configs by... \n" "${SRC_DIR}" "${CONF_EXPORT_DIR}"
 else
   printf "ERROR: The %s/config/install folder does not exist. Closing...\n" "${ABS_SRC_DIR}"
