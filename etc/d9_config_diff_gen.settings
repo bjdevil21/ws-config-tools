@@ -15,18 +15,18 @@ RELATIVE_WEB_ROOT=_sites_D9/ws-upstr/web
 # because the script will be editing these files during script execution.
 # Example for /home/<userID>/your/temporary/conf/directory: CONF_EXPORT_DIR=your/temporary/conf/directory
 CONF_EXPORT_DIR=Desktop/active_configs
-# Because Drush needs a relative directory (vs. absolute), enter the levels up from the web root to
-# get to the $CONF_DIR set above. Going from the web root (from Drush's POV) should end up in $ABS_CONF_DIR.
-# Example: For /Users/<ASURITE>/my_sites/site1/web configs into /Users/<ASURITE>/your/working/conf/directory:
-# EXPORT_DIR_LEVEL=../../../
-# NOTE: Needs trailing slash
+# Because Drush needs a relative directory (vs. absolute), enter the levels up from the web root (from Drush's POV) to
+# the first parent folder to also contain $CONF_EXPORT_DIR set above (should be the user's root directory).
+# Example: For /Users/<ASURITE>/my_sites/local/dev/site1/web configs into /Users/<ASURITE>/your/working/conf/directory:
+# EXPORT_DIR_LEVEL=../../../../../
+# NOTE: Requires a trailing slash
 EXPORT_DIR_LEVEL=../../../
 # (OPTIONAL) Different text editor application name, if desired.
 # Include the entire command required from the CLI in your OS to open the application.
-# Ex. VSCode on macOS: "open -a Visual\ Studio\ Code"
-# Ex. vi on Linux: "vi"
-#TEXT_EDITOR="/opt/sublime_text/sublime_text"
-TEXT_EDITOR="nano"
+#TEXT_EDITOR="vi" # Linux's or macOS's Vi editor
+#TEXT_EDITOR="/opt/sublime_text/sublime_text" # linux app
+#TEXT_EDITOR="open -a Visual\ Studio\ Code" # VSCode on a Mac
+TEXT_EDITOR="nano" # Default
 
 ###########################################
 # DO NOT CHANGE ANYTHING BELOW THIS LINE

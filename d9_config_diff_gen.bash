@@ -34,6 +34,8 @@ function Help() {
   echo "  -m - Keep diff and command files for manual review in the /config/install directory of the compared project."
   printf "  -d - Re-run Drush export of active configs into ~/%s \n" "${CONF_EXPORT_DIR}"
   echo "  -b - Blab mode (verbose) output"
+  echo "  -z - Extra careful mode"
+  echo "  -Z - Extra careful mode (verbose)"
   echo "  -v - Script version"
   echo "  -h - Returns this help message"
   exit 0
@@ -71,13 +73,20 @@ function PrepConfigDir() {
 }
 
 # Options
-while getopts "bdmvh" option; do
+while getopts "bdhmvzZ" option; do
   case "${option}" in
   m) # Keep files for manual review
     MANUAL_DIFF_REVIEW=1;;
   b) # "Blab" Verbose mode
     _V=1;;
   d) # Re-run Drush export
+    RUN_DRUSH_EXPORT=1;;
+  z) # Do everything
+    MANUAL_DIFF_REVIEW=1
+    RUN_DRUSH_EXPORT=1;;
+  Z) # Do everything loudly
+    MANUAL_DIFF_REVIEW=1
+    _V=1
     RUN_DRUSH_EXPORT=1;;
   v) # Return version
     echo "${VERSION}"
@@ -108,7 +117,8 @@ if [[ ${RUN_DRUSH_EXPORT} == 1 ]]; then
   echo ""
 else
   if [[ "${YML_COUNT}" == 0 ]]; then
-    printf "ERROR: No YML files exist in %s.\nRe-run with the -d option to rebuild the active configs with Drush. Closing.\n" ${DRUSH_EXPORT_DIR} && exit 1
+    printf "ERROR: No YML files exist in %s.\nRe-run with the -d option to rebuild the active configs with Drush. Closing.\n" ${DRUSH_EXPORT_DIR}
+    exit 1
   else
     Log "%s YML files found in export directory, so skipping drush export and cleanup (by default).\n" ${YML_COUNT}
     Log "Note: YMLs directory last updated on $(date -d @$(stat -c '%Y' .)).\n"
@@ -140,6 +150,9 @@ for i in "${GH_PROJECTS_DIR}"/* ; do
 done
 
 # @TODO - Add "look for ALL projects" option?
+# Create separate single item array to run with for loop for single project?
+# Traverse the DIR_OPTIONS array with for loop for ALL projects? vs.
+# OR set for params to N..N for single traversal?
 
 [[ ${MISSED_KEY} -gt 0 ]] && Log "NOTE: %s incompatible directories were ignored.\n" ${MISSED_KEY} # If/then shorthand
 printf "Project's configs to compare (Enter 1-%d)? " "${KEY}"
@@ -148,6 +161,9 @@ if [[ ${DIR_OPTIONS[$which_project]} == '' ]]; then
   printf "ERROR: Invalid project selection. Closing...\n"
   exit 1
 fi
+
+############################### BEGIN for loop
+
 SRC_DIR=${DIR_OPTIONS[$which_project]}
 ABS_SRC_DIR=${GH_PROJECTS_DIR}${SRC_DIR}
 
@@ -155,21 +171,27 @@ if [[ -d ${ABS_SRC_DIR}/config/install ]]; then
   cd "${ABS_SRC_DIR}"/config/install || exit 1
   echo "============================"
   printf "%s\nGit branch: $(git branch --show-current)\n" "${SRC_DIR}"
-  printf "Hit Return/Enter to continue (or Ctrl-C to stop and change Git branches): \n"
+  git fetch origin "$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')" --dry-run -v # Check "master" branch for updates
+  printf "Hit Return/Enter to continue (or Ctrl-C to stop and change Git branches, pull remote updates, etc. before continuing): \n"
   read -r GitStop
 
+  echo ""
   Log "Comparing %s and %s configs by... \n" "${SRC_DIR}" "${CONF_EXPORT_DIR}"
 else
   printf "ERROR: The %s/config/install folder does not exist. Closing...\n" "${ABS_SRC_DIR}"
   exit 1
 fi
 
-# Regenerate new diff files
-# @TODO - Way to check for NEW config files in active_configs that are relevant to tested project directory?
-# Maybe look for any files in THE ACTIVE_CONFIGS DIR ${ABS_CONF_EXPORT_DIR} that 1) are NOT in the EXISTING PROJECT ../config directory (assuming no
+# TODO - Way to check for NEW config files in active_configs that are relevant to tested project directory?
+# 1) Maybe look for any files in THE ACTIVE_CONFIGS DIR ${ABS_CONF_EXPORT_DIR} that 1) are NOT in the EXISTING PROJECT ../config directory (assuming no
 # config import has been done on the site since work on new ticket/branch started), and 2) are newer that last Git
 # commit in ${ABS_SRC_DIR}?
-#
+# OR...
+# 2)
+#   a) Create a separate script to dump the configs to an alt tmp directory before work starts?
+#   b) Then (in this script) compare directory file lists and manually add the filenames to ${COMMANDS_FILE} as EITHER:
+#     i) new diff commands to run to add the lengthy diff output so it can be used as a patch file, OR
+#     ii) diff outputs with -q applied ("Only in ...") to let the dev know to manually copy/paste the files?
 
 > "${COMMANDS_FILE}"
 ls -a > "${COMMANDS_FILE}"
@@ -183,6 +205,12 @@ Log "DONE\n"
 Log "2 of 2) Generating diff file %s in %s/config/install..." "${DIFFS}" "${SRC_DIR}"
 bash "${COMMANDS_FILE}"
 printf "DONE\n"
+
+############################ END OF FOR LOOP?
+### TODO "allspark" Q: Where does the "allspark" DIFFS file go? A: Into an _allspark.diff file, either in a bash script directory or at the script root?
+### TODO "allspark" Concatenate >> into the above master file (and delete the individual project files? perhaps a new flag?)
+### TODO "allspark" Q: Keep a concatenated COMMANDS_FILE? A: Maybe?
+### TODO "allspark" set DIFFS to _allspark_cant_be_a_patch_file.diff
 
 # Open diffs file for review.
 Log "Opening %s in %s...\n" "${DIFFS}" "${TEXT_EDITOR}"
