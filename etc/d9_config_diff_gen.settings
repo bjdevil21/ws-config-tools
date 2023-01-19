@@ -23,9 +23,9 @@ CONF_EXPORT_DIR=Desktop/active_configs
 EXPORT_DIR_LEVEL=../../../
 # (OPTIONAL) Different text editor application name, if desired.
 # Include the entire command required from the CLI in your OS to open the application.
-#TEXT_EDITOR="vi" # Linux's or macOS's Vi editor
-#TEXT_EDITOR="/opt/sublime_text/sublime_text" # linux app
-#TEXT_EDITOR="open -a Visual\ Studio\ Code" # VSCode on a Mac
+#TEXT_EDITOR="vi" # Vi editor on Linux of macOS
+#TEXT_EDITOR="/opt/sublime_text/sublime_text" # Sublime Text on Linux
+#TEXT_EDITOR="open -a Visual\ Studio\ Code" # VSCode on macOS
 TEXT_EDITOR="nano" # Default
 
 ###########################################
@@ -33,8 +33,11 @@ TEXT_EDITOR="nano" # Default
 ###########################################
 COMMANDS_FILE=_ws2_diff_commands.bash
 DIFFS=_configs.diff
+SCRIPT_ROOT=$(pwd)
+ALL_DIFFS="${SCRIPT_ROOT}"/_allspark${DIFFS}
 MANUAL_DIFF_REVIEW=0
 CHECK_MOD_INSTALL=0
+VERIFY_GIT=0
 _V=0
 WEB_ROOT=${USER_DIR_ROOT}/${RELATIVE_WEB_ROOT}
 ABS_CONF_EXPORT_DIR=${USER_DIR_ROOT}${CONF_EXPORT_DIR} # Absolute configs directory
@@ -43,8 +46,8 @@ DRUSH_EXPORT_DIR=${EXPORT_DIR_LEVEL}${CONF_EXPORT_DIR} # Drush export directory
 RUN_DRUSH_EXPORT=0
 
 # Bash script version
-VERSION=0.1.0
+VERSION=1.0.0
 
 export TEXT_EDITOR
-export COMMANDS_FILE DIFFS MANUAL_DIFF_REVIEW CHECK_MOD_INSTALL _V
+export COMMANDS_FILE DIFFS SCRIPT_ROOT ALL_DIFFS MANUAL_DIFF_REVIEW CHECK_MOD_INSTALL VERIFY_GIT _V
 export WEB_ROOT ABS_CONF_EXPORT_DIR CONF_EXPORT_DIR GH_PROJECTS_DIR DRUSH_EXPORT_DIR RUN_DRUSH_EXPORT VERSION

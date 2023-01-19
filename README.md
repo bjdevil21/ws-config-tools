@@ -29,10 +29,17 @@ This Bash script helps identify which YML files need to be added to Git commits 
 3. Close the file when done reviewing. By default, when the diff file text editor is closed, the generated diff file (and command file that made it) are deleted.
 
 #### Options (flags)
-- -m - Keep diff and command files for manual review in the /config/install directory of the project directory.
+
+These flags can be combined (i.e. -mgb, etc.), with -z and -Z combining most of the options.
+
+- -m - Keep diff and command files for manual review in the /config/install directory of the compared project.
+- -g - Interactively verify Git branch status for each project
+- -d - Re-run Drush export of active configs for comparison
 - -b - "Blab" mode (verbose output)
-- -h - Returns this help message
+- -z - Extra careful mode
+- -Z - Extra careful mode (verbose)
 - -v - Returns script version
+- -h - Returns this help message
 
 ## NOTES
 - This script currently only checks a project's /config/install directories. It does not check any other YML files (in the root directory, other /config directories, etc.) Future versions may check other YML files as well.
