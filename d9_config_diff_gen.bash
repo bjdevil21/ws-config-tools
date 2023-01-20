@@ -38,7 +38,8 @@ function Help() {
   echo "  -k - Keep diff and command files for manual review in the /config/install directory of the compared project."
   echo "  -g - Interactively verify Git branch status for each project"
   printf "  -r - Re-run Drush export of active configs into ~/%s \n" "${CONF_EXPORT_DIR}"
-  echo "  -c - Drush checks if project is enabled (disabled projects will bloat the config diff output)"
+  echo " -R - Same as -r, but with additional 'start point' config export to compare later for new YML files"
+  echo "  -c - Drush checks if project is enabled (by default, disabled projects bloat the config diff output)"
   echo "  -V - Verbose output"
   echo "  -z - Extra careful mode"
   echo "  -Z - Extra careful mode (verbose)"
@@ -88,11 +89,10 @@ function UpdateConfDirs {
 }
 
 # SCRIPT OPTIONS
-while getopts "cghkrvVzZ" option; do
+while getopts "cghkrRvVzZ" option; do
   case "${option}" in
   c) # Is project enabled?
-    PROJECTS_CHECK=1
-    ;;
+    PROJECTS_CHECK=1;;
   g) # Interactive Git branch verification
     VERIFY_GIT_STATUS=1;;
   h) # Outputs help content
@@ -101,18 +101,20 @@ while getopts "cghkrvVzZ" option; do
     MANUAL_DIFF_REVIEW=1;;
   r) # Re-run Drush export
     RERUN_EXPORT=1;;
+  R) # Re-run Drush export AND create alt copy for comparison/contrast
+    RERUN_EXPORT=1
+    COPY_EXPORT_START=1;;
   v) # Return version
     echo "${VERSION}"
-    exit 0
-    ;;
+    exit 0;;
   V) # "Blab" Verbose mode
     _V=1;;
-  z) # Do everything
+  z) # Do everything (except clear alt config dir *_start)
     MANUAL_DIFF_REVIEW=1
     RERUN_EXPORT=1
     VERIFY_GIT_STATUS=1
     PROJECTS_CHECK=1;;
-  Z) # Do everything loudly
+  Z) # Do everything loudly (except clear alt config dir *_start)
     MANUAL_DIFF_REVIEW=1
     RERUN_EXPORT=1
     VERIFY_GIT_STATUS=1
@@ -134,12 +136,38 @@ if [[ ${RERUN_EXPORT} == 1 ]]; then
   echo ""
   # Remove site-specific settings from exported active YMLs
   # https://www.drupal.org/docs/distributions/creating-distributions/how-to-write-a-drupal-installation-profile#s-configuration)
-  Verbose "YML: Cleaning out default local site UUIDs, etc. from exported YMLs..."
+  Verbose "Cleaning out default local site UUIDs, etc. from exported YMLs..."
   find "${ABS_CONF_EXPORT_DIR}"/ -type f -exec sed -i -e '/^uuid: /d' {} \;
   find "${ABS_CONF_EXPORT_DIR}"/ -type f -exec sed -i -e '/_core:/,+1d' {} \;
   Verbose "DONE\n"
   echo ""
-else
+  if [[ ${COPY_EXPORT_START} == 1 ]]; then
+    if [[ -d "${COPY_EXPORT_START_DIR}" ]]; then
+      BarrierMajor
+      printf "WARNING: %s already exists with your starting configurations before you started this task.\n" "${COPY_EXPORT_START_DIR}"
+      printf "Are you sure you want to overwrite it? (Enter Y to continue): "
+      read -r overwrite_start
+      if [[ "${overwrite_start}" == "Y" ]]; then
+        printf "\nOk - Overwriting %s directory in 3 seconds..." "${COPY_EXPORT_START_DIR}"
+        sleep 3
+        rm -rf "${COPY_EXPORT_START_DIR}" || exit 1
+        cp -pr "${ABS_CONF_EXPORT_DIR}" "${COPY_EXPORT_START_DIR}" || exit 1
+        printf "DONE.\n\n"
+      else
+        printf "Keeping older version of %s.\n" "${COPY_EXPORT_START_DIR}"
+      fi
+    else
+      Verbose "NOTICE: No %s was detected.\n" "${ABS_CONF_EXPORT_DIR}"
+      Verbose "Make sure to create this directory before work on a YML-altering\n"
+      Verbose "task was started. If that didn't happen, then be sure to double\n"
+      Verbose "check for new YML files created in the active_config directory\n"
+      Verbose "and review the Conf sync output in the Drupal UI.\n\n"
+      printf "Copying %s over to %s..." "${ABS_CONF_EXPORT_DIR}" "${COPY_EXPORT_START_DIR}"
+      cp -pr "${ABS_CONF_EXPORT_DIR}" "${COPY_EXPORT_START_DIR}" || exit 1
+      printf "DONE.\n\n"
+    fi
+  fi
+else # Skip all exports
   if [[ "${YML_COUNT}" == 0 ]]; then
     Issue "No YML files exist in ${RERUN_EXPORT_DIR}.\nRe-run with an option that rebuilds the active configs with Drush. Closing." "${WCT_ERROR}"
     exit 1
@@ -221,7 +249,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
       fi
       cd "${ABS_CONF_EXPORT_DIR}" || exit 1
     fi
-    # Git output information
+    # Git branch output information
     cd "${ABS_SRC_DIR}"/config/install || exit 1
     printf "%s\nGit branch: $(git branch --show-current)\n" "${SRC_DIR}"
     TMP_GIT_BRANCH="$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')"
@@ -247,15 +275,10 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     fi
   fi
 
-  # TODO - Way to check for NEW config files in active_configs that are relevant to tested project directory?
-  # 1) Maybe look for any files in THE ACTIVE_CONFIGS DIR ${ABS_CONF_EXPORT_DIR} that 1) are NOT in the EXISTING PROJECT ../config directory (assuming no
-  # config import has been done on the site since work on new ticket/branch started), and 2) are newer that last Git
-  # commit in ${ABS_SRC_DIR}?
-  # OR (more reliably)...
-  # 2) Create a separate script to dump the configs to an alt tmp directory BEFORE WORK STARTS. Then (in this script) compare
-  # directory file lists and manually add the files to ${COMMANDS_FILE} as EITHER:
-  #   a) full diff output for each file so it can be used as a patch file, OR
-  #   b) diff commands with -q applied (returning "Only in ..." output) to let the dev know to manually copy/paste the new files?
+  # TODO - Check for NEW config files in active_configs that are new and need to be added to $SRC_DIR/config/install directory.
+  # 2. Compile list of new files in the active_configs that aren't in the theoretically older alternate temp directory as either:
+  #   a. diff commands to the ${COMMANDS_FILE} to add the patch-able diff there, OR
+  #   b. diff commands with -q applied (which returns the "File X only found in A..." output) to let the dev know which files to manually copy/paste into the project’s /config/install folder.
 
   > "${COMMANDS_FILE}"
   ls -a > "${COMMANDS_FILE}"
