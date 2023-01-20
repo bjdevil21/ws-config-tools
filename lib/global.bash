@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 # CONSTANTS
+## Issue types for Issue() calls.
 WCT_ERROR=1
 WCT_WARNING=2
 WCT_OK=3
@@ -9,8 +10,8 @@ WCT_DEBUG=4
 export WCT_DEBUG WCT_OK WCT_WARNING WCT_ERROR
 
 # Check bash version for compatibility
-# param 1 (int) - bash major version
-# param 2 (int) - bash minor version
+# $1 (int) - bash major version
+# $2 (int) - bash minor version
 BashVersionCheck() {
   if ! [[ BASH_VERSINFO[0] -gt $1 || BASH_VERSINFO[0] -eq $1 && BASH_VERSINFO[1] -ge $2 ]]; then
     echo "Sorry, you need at least v4.3 to run this script. Check 'bash --version'"
@@ -18,6 +19,8 @@ BashVersionCheck() {
   fi
 }
 
+# UserRootDirCheck() - Returns the script executing user's home directory, based on their OS (Linux or Mac - no Windows support).
+# No input params
 UserRootDirCheck() {
   if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     OS_ROOT="/home"
@@ -31,13 +34,19 @@ UserRootDirCheck() {
   export OS_ROOT USER_DIR_ROOT
 }
 
-Verbose() { # Passes in _V
+# Verbose() - If -V is passed into the main script, this outputs text that isn't displayed by default. Functions as a shell of printf().
+# $1 (str) - Message to be displayed
+# NOTE: Include line breaks (\n) in any string you pass in.
+Verbose() {
   if [[ $_V -eq 1 ]]; then
     # shellcheck disable=SC2059
     printf "$@"
   fi
 }
 
+# IssueLevels() - Defines text output when
+# Internal function for Issue(). Do not use.
+# $1 (int) - Type of message (see Issue()).
 IssueLevels() {
   case $1 in
   4) echo "DEBUG: ";;
@@ -48,20 +57,29 @@ IssueLevels() {
   esac
 }
 
+# Issue() - Output for various issues - info, debug, errors, etc
+# $1 - (str) Message string to be output.
+#    To get the right "parameters" below, don't use printf parameters when calling this function;
+#    Include the variables directly in this string instead.
+# $2 - (str) input level (use the constants above) (defaults to IssueLevel case default - MSG)
+# $3 - (int) (optional) If == 1, hides the top and bottom barriers (defaults to showing them)
 Issue() {
-  BarrierMinor
+  [[ $3 != 1 ]] && BarrierMinor
   local IssueLevel=$2
   printf "%s" "$(IssueLevels "${IssueLevel}")"
   #printf "%s" "$@"
   printf "%s" "$1"
-  echo ""
-  BarrierMinor
+  [[ $3 != 1 ]] && echo "" && BarrierMinor
 }
 
+# BarrierMajor() - Outputs a simple, think barrier
+# No input params
 BarrierMajor() {
   echo '============================'
 }
 
+# BarrierMajor() - Outputs a simple, thin barrier
+# No input params
 BarrierMinor() {
   echo '----------------------------'
 }

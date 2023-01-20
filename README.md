@@ -30,16 +30,17 @@ This Bash script helps identify which YML files need to be added to Git commits 
 
 #### Options (flags)
 
-These flags can be combined (i.e. -mgb, etc.), with -z and -Z combining most of the options.
+These flags can be combined (i.e. -kgV, -cr, etc.), with -z and -Z combining most of the options.
 
-- -m - Keep diff and command files for manual review in the /config/install directory of the compared project.
-- -g - Interactively verify Git branch status for each project
-- -d - Re-run Drush export of active configs for comparison
-- -b - "Blab" mode (verbose output)
-- -z - Extra careful mode
-- -Z - Extra careful mode (verbose)
-- -v - Returns script version
-- -h - Returns this help message
+- -k Keep diff and command files for manual review in the /config/install directory of the compared project.
+- -g Interactively verify Git branch status for each project
+- -r Re-run Drush export of active configs into ~/%s \n" "${CONF_EXPORT_DIR}"
+- -c Drush checks if project is enabled (disabled projects will bloat the config diff output)
+- -V Verbose output
+- -z Extra careful mode
+- -Z Extra careful mode (verbose)
+- -v Script version
+- -h Returns this help message
 
 ## NOTES
 - This script currently only checks a project's /config/install directories. It does not check any other YML files (in the root directory, other /config directories, etc.) Future versions may check other YML files as well.

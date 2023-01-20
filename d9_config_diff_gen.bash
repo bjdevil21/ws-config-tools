@@ -35,10 +35,11 @@ function Help() {
   echo "  (in the root directory, other /config directories, etc.)"
   echo ""
   echo "Flags (options):"
-  echo "  -m - Keep diff and command files for manual review in the /config/install directory of the compared project."
+  echo "  -k - Keep diff and command files for manual review in the /config/install directory of the compared project."
   echo "  -g - Interactively verify Git branch status for each project"
-  printf "  -d - Re-run Drush export of active configs into ~/%s \n" "${CONF_EXPORT_DIR}"
-  echo "  -b - Blab mode (verbose output)"
+  printf "  -r - Re-run Drush export of active configs into ~/%s \n" "${CONF_EXPORT_DIR}"
+  echo "  -c - Drush checks if project is enabled (disabled projects will bloat the config diff output)"
+  echo "  -V - Verbose output"
   echo "  -z - Extra careful mode"
   echo "  -Z - Extra careful mode (verbose)"
   echo "  -v - Script version"
@@ -46,7 +47,7 @@ function Help() {
   exit 0
 }
 # Is the project a valid project to check?
-function ProjectVerify() { # $1 is passed-in SRC_DIR
+function ProjectVerify { # $1 is passed-in SRC_DIR
   if [[ $1 =~ .*"webspark-module-".* || $1 =~ .*"webspark-theme-".* || $1 =~ .*"webspark-profile-".* ]]; then
     echo "true"
   else
@@ -54,29 +55,30 @@ function ProjectVerify() { # $1 is passed-in SRC_DIR
   fi
 }
 # Prepare active configs directory
-function PrepConfigDir() {
+function PrepConfigDir {
   if [[ -d "${ABS_CONF_EXPORT_DIR}" ]]; then
     find "${ABS_CONF_EXPORT_DIR}" -type f -not -name "*.yml" -exec rm {} \; # Delete non-YML files from config dir
     YML_COUNT=$(find "${ABS_CONF_EXPORT_DIR}" -type f -name "*.yml" 2>/dev/null | wc -l)
     if [[ $YML_COUNT != 0 ]]; then
-      if [[ ${RUN_DRUSH_EXPORT} == 1 ]]; then
+      if [[ ${RERUN_EXPORT} == 1 ]]; then
         Verbose "Emptying %s directory..." "${ABS_CONF_EXPORT_DIR}"
         rm "${ABS_CONF_EXPORT_DIR}"/*
         Verbose "DONE.\n"
       fi
     else
-      RUN_DRUSH_EXPORT=1 # Forcing rebuild to populate empty directory
+      RERUN_EXPORT=1 # Forcing rebuild to populate empty directory
     fi
   else
     Verbose "\nNotice: %s does not exist. Creating directory..." "${ABS_CONF_EXPORT_DIR}"
     mkdir "${ABS_CONF_EXPORT_DIR}" || exit 1
     Verbose "DONE.\n"
-    if [[ "${RUN_DRUSH_EXPORT}" == 0 ]]; then
-      RUN_DRUSH_EXPORT=1 # Forcing rebuild to populate directory
+    if [[ "${RERUN_EXPORT}" == 0 ]]; then
+      RERUN_EXPORT=1 # Forcing rebuild to populate directory
     fi
   fi
 }
-function UpdateConfDirs() {
+# Resets config directory names/locations
+function UpdateConfDirs {
   TMP_CURR_PROJ=$(printf "## Project %d - %s ##" "$1" "${DIR_OPTIONS[$1]}")
   if [[ $2 == 1 ]]; then
     printf "\n\n%s\n" "${TMP_CURR_PROJ}"
@@ -85,35 +87,38 @@ function UpdateConfDirs() {
   ABS_SRC_DIR=${GH_PROJECTS_DIR}${SRC_DIR}
 }
 
-# END FUNCTIONS
-
-# Options
-while getopts "bdghmvzZ" option; do
+# SCRIPT OPTIONS
+while getopts "cghkrvVzZ" option; do
   case "${option}" in
-  b) # "Blab" Verbose mode
-    _V=1;;
-  d) # Re-run Drush export
-    RUN_DRUSH_EXPORT=1;;
+  c) # Is project enabled?
+    PROJECTS_CHECK=1
+    ;;
   g) # Interactive Git branch verification
-    VERIFY_GIT=1;;
+    VERIFY_GIT_STATUS=1;;
   h) # Outputs help content
     Help;;
-  m) # Keep files for manual review
+  k) # Keep files for manual review
     MANUAL_DIFF_REVIEW=1;;
+  r) # Re-run Drush export
+    RERUN_EXPORT=1;;
   v) # Return version
     echo "${VERSION}"
     exit 0
     ;;
+  V) # "Blab" Verbose mode
+    _V=1;;
   z) # Do everything
     MANUAL_DIFF_REVIEW=1
-    RUN_DRUSH_EXPORT=1
-    VERIFY_GIT=1;;
+    RERUN_EXPORT=1
+    VERIFY_GIT_STATUS=1
+    PROJECTS_CHECK=1;;
   Z) # Do everything loudly
     MANUAL_DIFF_REVIEW=1
+    RERUN_EXPORT=1
+    VERIFY_GIT_STATUS=1
+    PROJECTS_CHECK=1
     # shellcheck disable=SC2034
-    _V=1
-    RUN_DRUSH_EXPORT=1
-    VERIFY_GIT=1;;
+    _V=1;;
   \?) # Default: Invalid option
     Issue "Invalid option. Try -h for help." "${WCT_ERROR}"
     exit 1
@@ -122,10 +127,10 @@ while getopts "bdghmvzZ" option; do
 done
 
 PrepConfigDir
-if [[ ${RUN_DRUSH_EXPORT} == 1 ]]; then
+if [[ ${RERUN_EXPORT} == 1 ]]; then
   Verbose "Drush exporting the local dev site\'s config files into %s...\n" "${ABS_CONF_EXPORT_DIR}"
   cd "${WEB_ROOT}" || exit 1
-  drush cex --destination="${DRUSH_EXPORT_DIR}"
+  drush cex --destination="${RERUN_EXPORT_DIR}"
   echo ""
   # Remove site-specific settings from exported active YMLs
   # https://www.drupal.org/docs/distributions/creating-distributions/how-to-write-a-drupal-installation-profile#s-configuration)
@@ -136,7 +141,7 @@ if [[ ${RUN_DRUSH_EXPORT} == 1 ]]; then
   echo ""
 else
   if [[ "${YML_COUNT}" == 0 ]]; then
-    Issue "No YML files exist in ${DRUSH_EXPORT_DIR}.\nRe-run with the -d option to rebuild the active configs with Drush. Closing." "${WCT_ERROR}"
+    Issue "No YML files exist in ${RERUN_EXPORT_DIR}.\nRe-run with an option that rebuilds the active configs with Drush. Closing." "${WCT_ERROR}"
     exit 1
   else
     Verbose "\n%s YML files found in %s directory, so skipping drush export and cleanup (by default).\n" "${YML_COUNT}" "${CONF_EXPORT_DIR}"
@@ -145,9 +150,8 @@ else
   fi
 fi
 
+# Get and select project directories
 cd "${ABS_CONF_EXPORT_DIR}" || exit 1
-
-# Get possible project directories from GH_PROJECTS_DIR to select
 declare -a DIR_OPTIONS=()
 KEY=0
 MISSED_KEY=0
@@ -168,13 +172,12 @@ for i in "${GH_PROJECTS_DIR}"/* ; do
     fi
   fi
 done
-# Manually add ALL option
+## Manually add ALL option
 KEY=$((KEY+1))
 DIR_OPTIONS[$KEY]="ALL"
 printf "%s) %s\n" ${KEY} "${DIR_OPTIONS[$KEY]}"
-
-[[ ${MISSED_KEY} -gt 0 ]] && Verbose "(%s incompatible directories were ignored)\n" ${MISSED_KEY}
-
+## End Manually add ALL option
+[[ ${MISSED_KEY} -gt 0 ]] && Verbose "( Ignored %s incompatible directories )\n" ${MISSED_KEY}
 printf "Project's configs to compare (Enter 1-%d)? " "${KEY}"
 read -r which_project
 if [[ ${DIR_OPTIONS[$which_project]} == '' ]]; then
@@ -190,18 +193,43 @@ else # Single project
 fi
 
 # Process each project
-############################### BEGIN for loop
-
 for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   UpdateConfDirs "${i}" 1
   BarrierMajor
+  # ALL option logging
+  [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - Project ${i} of ${LAST_PROJECT}: ${SRC_DIR}" >> "${ALL_DIFFS}"
+
   if [[ -d ${ABS_SRC_DIR}/config/install ]]; then
+    # Check if project is enabled (skipped by default)
+    if [[ "${PROJECTS_CHECK}" == 1 ]]; then
+      # Get project name from info.yml
+      cd "${WEB_ROOT}" || exit 1
+      PROJECT_YML_INFO=$(find "${ABS_SRC_DIR}"/ -maxdepth 1 -type f -printf "%f\n" | grep ".info.yml" | sed -r 's/.info.yml//')
+      if [[ "${PROJECT_YML_INFO}" != '' ]]; then
+        if [[ $(drush pm-list --pipe --status=enabled --type=module --no-core | grep "\(${PROJECT_YML_INFO}\)" | cut -f 3) ]]; then
+          Verbose "%s is enabled and will be reviewed.\n" "${PROJECT_YML_INFO}"
+        else
+          Issue "${PROJECT_YML_INFO} is disabled. "
+          # ALL option logging
+          if [[ $FIRST_PROJECT == "$LAST_PROJECT" ]]; then
+            printf " Closing.\n" && exit 1
+          else
+            echo "##NO-PATCH## - " "$(Issue "${PROJECT_YML_INFO} is disabled. Skipping gratuitous diff output..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
+            printf " Skipping...\n" && continue
+          fi
+        fi
+      fi
+      cd "${ABS_CONF_EXPORT_DIR}" || exit 1
+    fi
+    # Git output information
     cd "${ABS_SRC_DIR}"/config/install || exit 1
     printf "%s\nGit branch: $(git branch --show-current)\n" "${SRC_DIR}"
-    git fetch origin "$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')" --dry-run -v # Check "master" branch for updates
-    if [[ $VERIFY_GIT == 1 ]]; then
-      Verbose "\n* IMPORTANT: If the Git output above doesn't say \"\[up to date\]\", you probably need to pull the latest upstream changes down "
-      Verbose "from $(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@') before continuing...\n"
+    TMP_GIT_BRANCH="$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')"
+    git fetch origin "${TMP_GIT_BRANCH}" --dry-run -v # Check default project branch for updates
+    # Optional Git confirmation step (disabled by default)
+    if [[ $VERIFY_GIT_STATUS == 1 ]]; then
+      Verbose "\n* IMPORTANT: If the Git output above doesn't say \"[up to date]\", you need to consider pulling and integrating the latest upstream changes "
+      Verbose "from %s before continuing...\n" "${TMP_GIT_BRANCH}"
       printf "\n-- Hit Enter/Return to continue (or Ctrl-C to Cancel if you want to change branches, pull remote updates, etc.) ** "
       read -r
     else
@@ -214,8 +242,8 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     if [[ $FIRST_PROJECT == "$LAST_PROJECT" ]]; then
       printf "Closing.\n" && exit 1
     else
-      printf "Skipping...\n"
-      continue
+      echo "##NO-PATCH## - " "$(Issue "${SRC_DIR}/config/install folder does not exist. Skipping..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
+      printf "Skipping...\n" && continue
     fi
   fi
 
@@ -242,41 +270,48 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   bash "${COMMANDS_FILE}"
   Verbose "DONE\n"
 
-  # ALL option
+  # ALL option logging
   if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
-    echo "##NO-PATCH## - Project ${i} of ${LAST_PROJECT}: ${SRC_DIR}" >> "${ALL_DIFFS}"
-    cat "${DIFFS}" >> "${ALL_DIFFS}"
+    if [[ -s "${DIFFS}" ]]; then
+      Verbose " - Adding diff contents to %s" "${ALL_DIFFS}"
+      cat "${DIFFS}" >> "${ALL_DIFFS}"
+      Verbose "DONE\n\n"
+    else
+      echo "##NO-PATCH## - " "$(Issue "${DIFFS} is empty..." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
+    fi
+  else
+    echo ""
   fi
+
 done
 
-############################ END FOR LOOP
-
-# Open diffs file for review
-Verbose "$(BarrierMinor)"
-
+# Open diff (individual or ALL) file for review (if not empty)
+BarrierMinor
 OUTPUT=$([[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "${ALL_DIFFS}" || echo "${DIFFS}")
 if [[ -s "${OUTPUT}" ]]; then
   Verbose "Opening %s in %s...\n"  "${OUTPUT}" "${TEXT_EDITOR}"
   "${TEXT_EDITOR}" "${OUTPUT}"
   Verbose "Review complete.\n"
 else
-  Verbose "No changes in diff file to review. Skipping and deleting all generated diff and command files.\n"
+  Issue "No changes ${OUTPUT} to review. Skipping and deleting all generated diff and command files.\n" "${WCT_OK}"
   MANUAL_DIFF_REVIEW=0
 fi
 BarrierMinor
 
-# Post-diff Cleanup
+# Post-diff review - cleanup (for individual or ALL projects)
 for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   UpdateConfDirs "${i}" 0
+  # Optionally keep diff(s) file(s) (disabled by default)
   if [[ ${MANUAL_DIFF_REVIEW} == 1 ]]; then
     [[ $i == "${FIRST_PROJECT}" ]] && echo "The following files were kept for review:"
     echo " - ~/${PROJECTS_DIR}${SRC_DIR}""/config/install/""${DIFFS}"
     echo " - ~/${PROJECTS_DIR}${SRC_DIR}""/config/install/""${COMMANDS_FILE}"
     if [[ $FIRST_PROJECT != "${LAST_PROJECT}" && ${LAST_PROJECT} == "$i" ]]; then
       echo " - ""${ALL_DIFFS}"
-      Verbose "...Remember to delete these files when done reviewing!\n" "${COMMANDS_FILE}" "${DIFFS}"
+      Verbose "Remember to delete these files when done reviewing!\n" "${COMMANDS_FILE}" "${DIFFS}"
     fi
   else
+    # Delete all files
     Verbose "Deleting %s, %s files in %s if they exist... " "${COMMANDS_FILE}" "${DIFFS}" ${DIR_OPTIONS[$i]}
     [[ -f "${ABS_SRC_DIR}"/config/install/"${COMMANDS_FILE}" ]] && rm "${ABS_SRC_DIR}"/config/install/"${COMMANDS_FILE}"
     [[ -f "${ABS_SRC_DIR}"/config/install/"${DIFFS}" ]] && rm "${ABS_SRC_DIR}"/config/install/"${DIFFS}"
@@ -287,5 +322,6 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   fi
 done
 
+# DONE
 printf "\nDONE.\n"
 exit
