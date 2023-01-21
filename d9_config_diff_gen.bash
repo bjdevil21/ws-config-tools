@@ -20,7 +20,9 @@ source ./etc/d9_config_diff_gen.settings || exit 1
 . "${USER_DIR_ROOT}"/.bashrc  # Bash FYI - . is the same as source
 
 # HELPER FUNCTIONS
-function Help() {
+
+# Help() - Output help docs
+function Help {
   # Display Help
   echo ""
   echo "Webspark 2 configuration file diff checker"
@@ -38,29 +40,31 @@ function Help() {
   echo "  -k - Keep diff and command files for manual review in the /config/install directory of the compared project."
   echo "  -g - Interactively verify Git branch status for each project"
   printf "  -r - Re-run Drush export of active configs into ~/%s \n" "${CONF_EXPORT_DIR}"
-  echo " -R - Same as -r, but with additional 'start point' config export to compare later for new YML files"
-  echo "  -c - Drush checks if project is enabled (by default, disabled projects bloat the config diff output)"
+  echo " -R - -r plus creates/overwrites second 'starting point' export dir (to compare later for new YML files)"
+  echo "  -c - Skip Drush check if project is enabled (by default, disabled projects bloat the config diff output)"
   echo "  -V - Verbose output"
   echo "  -z - Extra careful mode"
   echo "  -Z - Extra careful mode (verbose)"
-  echo "  -v - Script version"
+  echo "  -v - Returns version of script"
   echo "  -h - Returns this help message"
   exit 0
 }
 # Is the project a valid project to check?
-function ProjectVerify { # $1 is passed-in SRC_DIR
-  if [[ $1 =~ .*"webspark-module-".* || $1 =~ .*"webspark-theme-".* || $1 =~ .*"webspark-profile-".* ]]; then
+# $1 (int) - Directory to be checked
+function ProjectVerify {
+  if [[ $1 =~ "webspark-module-".* || $1 =~ "webspark-theme-".* || $1 =~ "webspark-profile-".* ]]; then
     echo "true"
   else
     echo "false"
   fi
 }
 # Prepare active configs directory
+# No input params
 function PrepConfigDir {
   if [[ -d "${ABS_CONF_EXPORT_DIR}" ]]; then
     find "${ABS_CONF_EXPORT_DIR}" -type f -not -name "*.yml" -exec rm {} \; # Delete non-YML files from config dir
     YML_COUNT=$(find "${ABS_CONF_EXPORT_DIR}" -type f -name "*.yml" 2>/dev/null | wc -l)
-    if [[ $YML_COUNT != 0 ]]; then
+    if [[ ${YML_COUNT} != 0 ]]; then
       if [[ ${RERUN_EXPORT} == 1 ]]; then
         Verbose "Emptying %s directory..." "${ABS_CONF_EXPORT_DIR}"
         rm "${ABS_CONF_EXPORT_DIR}"/*
@@ -79,10 +83,11 @@ function PrepConfigDir {
   fi
 }
 # Resets config directory names/locations
+# $1 (int) - Assigned project number from assembled list
+# $2 (int) - If 1, output current project messaging
 function UpdateConfDirs {
-  TMP_CURR_PROJ=$(printf "## Project %d - %s ##" "$1" "${DIR_OPTIONS[$1]}")
   if [[ $2 == 1 ]]; then
-    printf "\n\n%s\n" "${TMP_CURR_PROJ}"
+    printf "\n\n%s\n" "$(printf "## Project %d - %s ##" "$1" "${DIR_OPTIONS[$1]}")"
   fi
   SRC_DIR=${DIR_OPTIONS[$1]}
   ABS_SRC_DIR=${GH_PROJECTS_DIR}${SRC_DIR}
@@ -91,8 +96,8 @@ function UpdateConfDirs {
 # SCRIPT OPTIONS
 while getopts "cghkrRvVzZ" option; do
   case "${option}" in
-  c) # Is project enabled?
-    PROJECTS_CHECK=1;;
+  c) # Skip Drush check to see if project is enabled?
+    PROJECTS_CHECK=0;;
   g) # Interactive Git branch verification
     VERIFY_GIT_STATUS=1;;
   h) # Outputs help content
@@ -104,21 +109,19 @@ while getopts "cghkrRvVzZ" option; do
   R) # Re-run Drush export AND create alt copy for comparison/contrast
     RERUN_EXPORT=1
     COPY_EXPORT_START=1;;
-  v) # Return version
+  v) # Return script version
     echo "${VERSION}"
     exit 0;;
-  V) # "Blab" Verbose mode
+  V) # Verbose output
     _V=1;;
-  z) # Do everything (except clear alt config dir *_start)
+  z) # Do everything (except clear alt config dir *_start - needs -R)
+    MANUAL_DIFF_REVIEW=1
+    RERUN_EXPORT=1
+    VERIFY_GIT_STATUS=1;;
+  Z) # Do everything loudly (except clear alt config dir *_start - needs -R)
     MANUAL_DIFF_REVIEW=1
     RERUN_EXPORT=1
     VERIFY_GIT_STATUS=1
-    PROJECTS_CHECK=1;;
-  Z) # Do everything loudly (except clear alt config dir *_start)
-    MANUAL_DIFF_REVIEW=1
-    RERUN_EXPORT=1
-    VERIFY_GIT_STATUS=1
-    PROJECTS_CHECK=1
     # shellcheck disable=SC2034
     _V=1;;
   \?) # Default: Invalid option
@@ -157,7 +160,7 @@ if [[ ${RERUN_EXPORT} == 1 ]]; then
         printf "Keeping older version of %s.\n" "${COPY_EXPORT_START_DIR}"
       fi
     else
-      Verbose "NOTICE: No %s was detected.\n" "${ABS_CONF_EXPORT_DIR}"
+      Verbose "NOTICE: No %s was detected.\n" "${COPY_EXPORT_START_DIR}"
       Verbose "Make sure to create this directory before work on a YML-altering\n"
       Verbose "task was started. If that didn't happen, then be sure to double\n"
       Verbose "check for new YML files created in the active_config directory\n"
@@ -185,26 +188,28 @@ KEY=0
 MISSED_KEY=0
 for i in "${GH_PROJECTS_DIR}"/* ; do
   if [[ -d "$i" ]]; then
-    YML_FILE=$(basename "${i}")
-    if [[ $(ProjectVerify "${YML_FILE}") != false ]]; then
+    PROJECT_DIR=$(basename "${i}")
+    if [[ $(ProjectVerify "${PROJECT_DIR}") != false ]]; then
       KEY=$((KEY+1))
       if [[ $KEY == 1 ]]; then
         BarrierMajor
         printf "Eligible project(s) found in %s: \n" "${GH_PROJECTS_DIR}"
         BarrierMajor
       fi
-      DIR_OPTIONS[$KEY]=$YML_FILE
-      printf "%s) %s\n" ${KEY} "${YML_FILE}"
+      DIR_OPTIONS[$KEY]=$PROJECT_DIR
+      printf "%s) %s\n" ${KEY} "${PROJECT_DIR}"
     else
       MISSED_KEY=$((MISSED_KEY+1))
     fi
   fi
 done
+
 ## Manually add ALL option
 KEY=$((KEY+1))
 DIR_OPTIONS[$KEY]="ALL"
 printf "%s) %s\n" ${KEY} "${DIR_OPTIONS[$KEY]}"
 ## End Manually add ALL option
+
 [[ ${MISSED_KEY} -gt 0 ]] && Verbose "( Ignored %s incompatible directories )\n" ${MISSED_KEY}
 printf "Project's configs to compare (Enter 1-%d)? " "${KEY}"
 read -r which_project
@@ -230,7 +235,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   if [[ -d ${ABS_SRC_DIR}/config/install ]]; then
     # Check if project is enabled (skipped by default)
     if [[ "${PROJECTS_CHECK}" == 1 ]]; then
-      # Get project name from info.yml
+      # Get project name from *.info.yml file
       cd "${WEB_ROOT}" || exit 1
       PROJECT_YML_INFO=$(find "${ABS_SRC_DIR}"/ -maxdepth 1 -type f -printf "%f\n" | grep ".info.yml" | sed -r 's/.info.yml//')
       if [[ "${PROJECT_YML_INFO}" != '' ]]; then
@@ -260,8 +265,6 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
       Verbose "from %s before continuing...\n" "${TMP_GIT_BRANCH}"
       printf "\n-- Hit Enter/Return to continue (or Ctrl-C to Cancel if you want to change branches, pull remote updates, etc.) ** "
       read -r
-    else
-      sleep 1
     fi
     echo ""
     Verbose "Comparing %s/config/install and %s configs by doing... \n" "${SRC_DIR}" "${CONF_EXPORT_DIR}"
@@ -275,19 +278,28 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     fi
   fi
 
-  # TODO - Check for NEW config files in active_configs that are new and need to be added to $SRC_DIR/config/install directory.
-  # 2. Compile list of new files in the active_configs that aren't in the theoretically older alternate temp directory as either:
-  #   a. diff commands to the ${COMMANDS_FILE} to add the patch-able diff there, OR
-  #   b. diff commands with -q applied (which returns the "File X only found in A..." output) to let the dev know which files to manually copy/paste into the project’s /config/install folder.
-
   > "${COMMANDS_FILE}"
-  ls -a > "${COMMANDS_FILE}"
   > "${DIFFS}"
 
-  # Generates new diffs between the module (<) and the current config output (>)
   Verbose " - 1 of 2) Generating diff commands file %s to be executed in %s/config/install..." "${COMMANDS_FILE}" "${SRC_DIR}"
+
+  # Add newly generated YML files as diffs -- ONCE ONLY
+  if [[ $NEW_YMLS_INSERTED == 0 ]]; then
+    NEW_YML_FILES=$(LC_ALL=C diff -qr "${COPY_EXPORT_START_DIR}" "${ABS_CONF_EXPORT_DIR}" | grep -E "^Only in ${ABS_CONF_EXPORT_DIR}: .+\.yml$" | sed -e 's/^Only in .*:[[:space:]]*//g')
+    if [[ $NEW_YML_FILES != "" ]]; then
+      echo "${NEW_YML_FILES}" >> "${COMMANDS_FILE}"
+      NEW_YMLS_INSERTED=$((NEW_YMLS_INSERTED+1))
+      echo "##NO-PATCH## - " "$(Issue "Added $(echo "${NEW_YML_FILES}" | wc -l) new YML files for review first." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
+    fi
+  fi
+
+
+  # Adding original, existing YML files
+  ls -a >> "${COMMANDS_FILE}"
+
+  # Generates new diffs between the module (<) and the current config output (>)
   perl -pi -e 's/^.*(?<!\.yml)$//g' "${COMMANDS_FILE}" && sed -i '/^[[:space:]]*$/d' "${COMMANDS_FILE}" && sed -i '/^[[:blank:]]*$/ d' "${COMMANDS_FILE}"
-  perl -pi -e "s!^(.+?)\$!diff -uNwEbB ./\$1 ${ABS_CONF_EXPORT_DIR}/\$1 >> ${DIFFS}!g" "${COMMANDS_FILE}"
+  perl -pi -e "s!^(.+?)\$!diff -${DIFF_FLAGS} ./\$1 ${ABS_CONF_EXPORT_DIR}/\$1 >> ${DIFFS}!g" "${COMMANDS_FILE}"
   Verbose "DONE\n"
   Verbose " - 2 of 2) Executing diff file %s in %s/config/install..." "${DIFFS}" "${SRC_DIR}"
   bash "${COMMANDS_FILE}"
@@ -295,15 +307,13 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
 
   # ALL option logging
   if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
-    if [[ -s "${DIFFS}" ]]; then
+    if [[ -s "${DIFFS}" ]]; then # File not empty?
       Verbose " - Adding diff contents to %s" "${ALL_DIFFS}"
       cat "${DIFFS}" >> "${ALL_DIFFS}"
       Verbose "DONE\n\n"
     else
-      echo "##NO-PATCH## - " "$(Issue "${DIFFS} is empty..." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
+      echo "##NO-PATCH## - " "$(Issue "${DIFFS} is empty - Nothing to add..." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
     fi
-  else
-    echo ""
   fi
 
 done
@@ -321,7 +331,7 @@ else
 fi
 BarrierMinor
 
-# Post-diff review - cleanup (for individual or ALL projects)
+## Post-diff review - cleanup
 for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   UpdateConfDirs "${i}" 0
   # Optionally keep diff(s) file(s) (disabled by default)

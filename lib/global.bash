@@ -14,7 +14,7 @@ export WCT_DEBUG WCT_OK WCT_WARNING WCT_ERROR
 # $2 (int) - bash minor version
 BashVersionCheck() {
   if ! [[ BASH_VERSINFO[0] -gt $1 || BASH_VERSINFO[0] -eq $1 && BASH_VERSINFO[1] -ge $2 ]]; then
-    echo "Sorry, you need at least v4.3 to run this script. Check 'bash --version'"
+    echo "ERROR: You need at least v4.3 to run this script. Check with 'bash --version'"
     exit 1
   fi
 }
@@ -45,8 +45,8 @@ Verbose() {
 }
 
 # IssueLevels() - Defines text output when
-# Internal function for Issue(). Do not use.
 # $1 (int) - Type of message (see Issue()).
+# Note: Internal function for Issue(). Do not use.
 IssueLevels() {
   case $1 in
   4) echo "DEBUG: ";;

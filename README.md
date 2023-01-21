@@ -36,7 +36,7 @@ These flags can be combined (i.e. -kgV, -cr, etc.), with -z and -Z combining mos
 - -g Interactively verify Git branch status for each project
 - -r Re-run Drush export of active configs into $CONF_EXPORT_DIR
 - -R - Same as -r, but with additional 'start point' config export to compare later for new YML files
-- -c Drush checks if project is enabled (disabled projects will bloat the config diff output)
+- -c Skips Drush check if project is enabled (disabled projects bloat the config diff output)
 - -V Verbose output
 - -z Extra careful mode
 - -Z Extra careful mode (verbose)
