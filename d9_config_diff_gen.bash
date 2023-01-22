@@ -10,7 +10,7 @@
 # See Help() on using the script
 ##
 
-# IDE checks
+# IDE and OS checks
 # shellcheck disable=SC2188
 
 source ./lib/global.bash || exit 1
@@ -97,7 +97,7 @@ function UpdateConfDirs {
 while getopts "cghkrRvVzZ" option; do
   case "${option}" in
   c) # Skip Drush check to see if project is enabled?
-    PROJECTS_CHECK=0;;
+    PROJECT_CHECK=0;;
   g) # Interactive Git branch verification
     VERIFY_GIT_STATUS=1;;
   h) # Outputs help content
@@ -131,7 +131,52 @@ while getopts "cghkrRvVzZ" option; do
   esac
 done
 
+# START SCRIPT BODY
+
+# Get and select project directories
+declare -a DIR_OPTIONS=()
+KEY=0
+MISSED_KEY=0
+for i in "${GH_PROJECTS_DIR}"/* ; do
+  if [[ -d "$i" ]]; then
+    PROJECT_DIR=$(basename "${i}")
+    if [[ $(ProjectVerify "${PROJECT_DIR}") != false ]]; then
+      KEY=$((KEY+1))
+      if [[ $KEY == 1 ]]; then
+        BarrierMajor
+        printf "Eligible project(s) found in %s: \n" "${GH_PROJECTS_DIR}"
+        BarrierMajor
+      fi
+      DIR_OPTIONS[$KEY]=$PROJECT_DIR
+      printf "%s) %s\n" ${KEY} "${PROJECT_DIR}"
+    else
+      MISSED_KEY=$((MISSED_KEY+1))
+    fi
+  fi
+done
+KEY=$((KEY+1)) ## Manually add ALL option
+DIR_OPTIONS[$KEY]="ALL"
+printf "%s) %s\n" ${KEY} "${DIR_OPTIONS[$KEY]}"
+
+[[ ${MISSED_KEY} -gt 0 ]] && Verbose "\n( Ignored %s incompatible directories )\n\n" ${MISSED_KEY}
+printf "Project's configs to compare (Enter 1-%d)? " "${KEY}"
+read -r which_project
+if [[ ${DIR_OPTIONS[$which_project]} == '' ]]; then
+  Issue "Invalid project selection. Closing..." "${WCT_ERROR}"
+  exit 1
+elif [[ $which_project == "${KEY}" ]]; then # ALL option
+  FIRST_PROJECT=1
+  LAST_PROJECT=$((KEY-1)) # Get 'em all
+  OUTPUT="${ALL_DIFFS}"
+  > "${ALL_DIFFS}"
+else # Single project
+  FIRST_PROJECT=${which_project}
+  LAST_PROJECT="${FIRST_PROJECT}"
+  OUTPUT="${DIFFS}"
+fi
+
 PrepConfigDir
+# Drush rerun active configs export
 if [[ ${RERUN_EXPORT} == 1 ]]; then
   Verbose "Drush exporting the local dev site\'s config files into %s...\n" "${ABS_CONF_EXPORT_DIR}"
   cd "${WEB_ROOT}" || exit 1
@@ -151,13 +196,17 @@ if [[ ${RERUN_EXPORT} == 1 ]]; then
       printf "Are you sure you want to overwrite it? (Enter Y to continue): "
       read -r overwrite_start
       if [[ "${overwrite_start}" == "Y" ]]; then
+        BarrierMajor
         printf "\nOk - Overwriting %s directory in 3 seconds..." "${COPY_EXPORT_START_DIR}"
         sleep 3
         rm -rf "${COPY_EXPORT_START_DIR}" || exit 1
         cp -pr "${ABS_CONF_EXPORT_DIR}" "${COPY_EXPORT_START_DIR}" || exit 1
         printf "DONE.\n\n"
+        BarrierMajor
       else
-        printf "Keeping older version of %s.\n" "${COPY_EXPORT_START_DIR}"
+        BarrierMinor
+        printf "NOTICE: Keeping older version of %s.\n" "${COPY_EXPORT_START_DIR}"
+        BarrierMinor
       fi
     else
       Verbose "NOTICE: No %s was detected.\n" "${COPY_EXPORT_START_DIR}"
@@ -181,50 +230,9 @@ else # Skip all exports
   fi
 fi
 
-# Get and select project directories
-cd "${ABS_CONF_EXPORT_DIR}" || exit 1
-declare -a DIR_OPTIONS=()
-KEY=0
-MISSED_KEY=0
-for i in "${GH_PROJECTS_DIR}"/* ; do
-  if [[ -d "$i" ]]; then
-    PROJECT_DIR=$(basename "${i}")
-    if [[ $(ProjectVerify "${PROJECT_DIR}") != false ]]; then
-      KEY=$((KEY+1))
-      if [[ $KEY == 1 ]]; then
-        BarrierMajor
-        printf "Eligible project(s) found in %s: \n" "${GH_PROJECTS_DIR}"
-        BarrierMajor
-      fi
-      DIR_OPTIONS[$KEY]=$PROJECT_DIR
-      printf "%s) %s\n" ${KEY} "${PROJECT_DIR}"
-    else
-      MISSED_KEY=$((MISSED_KEY+1))
-    fi
-  fi
-done
+cd "${ABS_CONF_EXPORT_DIR}" || exit 1 # does this matter here?
 
-## Manually add ALL option
-KEY=$((KEY+1))
-DIR_OPTIONS[$KEY]="ALL"
-printf "%s) %s\n" ${KEY} "${DIR_OPTIONS[$KEY]}"
-## End Manually add ALL option
-
-[[ ${MISSED_KEY} -gt 0 ]] && Verbose "( Ignored %s incompatible directories )\n" ${MISSED_KEY}
-printf "Project's configs to compare (Enter 1-%d)? " "${KEY}"
-read -r which_project
-if [[ ${DIR_OPTIONS[$which_project]} == '' ]]; then
-  Issue "Invalid project selection. Closing..." "${WCT_ERROR}"
-  exit 1
-elif [[ $which_project == "${KEY}" ]]; then # ALL option
-  FIRST_PROJECT=1
-  LAST_PROJECT=$((KEY-1)) # Get 'em all
-  > "${ALL_DIFFS}"
-else # Single project
-  FIRST_PROJECT=${which_project}
-  LAST_PROJECT="${FIRST_PROJECT}"
-fi
-
+#################################### BEGIN FOR LOOP
 # Process each project
 for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   UpdateConfDirs "${i}" 1
@@ -232,28 +240,28 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   # ALL option logging
   [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - Project ${i} of ${LAST_PROJECT}: ${SRC_DIR}" >> "${ALL_DIFFS}"
 
-  if [[ -d ${ABS_SRC_DIR}/config/install ]]; then
-    # Check if project is enabled (skipped by default)
-    if [[ "${PROJECTS_CHECK}" == 1 ]]; then
-      # Get project name from *.info.yml file
-      cd "${WEB_ROOT}" || exit 1
-      PROJECT_YML_INFO=$(find "${ABS_SRC_DIR}"/ -maxdepth 1 -type f -printf "%f\n" | grep ".info.yml" | sed -r 's/.info.yml//')
-      if [[ "${PROJECT_YML_INFO}" != '' ]]; then
-        if [[ $(drush pm-list --pipe --status=enabled --type=module --no-core | grep "\(${PROJECT_YML_INFO}\)" | cut -f 3) ]]; then
-          Verbose "%s is enabled and will be reviewed.\n" "${PROJECT_YML_INFO}"
+  # Check if project is enabled
+  if [[ "${PROJECT_CHECK}" == 1 ]]; then
+    # Get project name from *.info.yml file
+    cd "${WEB_ROOT}" || exit 1
+    PROJECT_YML_INFO=$(find "${ABS_SRC_DIR}"/ -maxdepth 1 -type f -printf "%f\n" | grep ".info.yml" | sed -r 's/.info.yml//')
+    if [[ "${PROJECT_YML_INFO}" != '' ]]; then
+      if [[ $(drush pm-list --pipe --status=enabled --type=module --no-core | grep "\(${PROJECT_YML_INFO}\)" | cut -f 3) ]]; then
+        Verbose "%s is enabled and will be reviewed.\n" "${PROJECT_YML_INFO}"
+      else
+        Issue "${PROJECT_YML_INFO} is disabled. " "${WCT_WARNING}"
+        # ALL option logging
+        if [[ $FIRST_PROJECT != "$LAST_PROJECT" ]]; then
+          echo "##NO-PATCH## - " "$(Issue "${PROJECT_YML_INFO} is disabled. Skipping gratuitous diff output..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
+          printf "Skipping...\n" && continue
         else
-          Issue "${PROJECT_YML_INFO} is disabled. "
-          # ALL option logging
-          if [[ $FIRST_PROJECT == "$LAST_PROJECT" ]]; then
-            printf " Closing.\n" && exit 1
-          else
-            echo "##NO-PATCH## - " "$(Issue "${PROJECT_YML_INFO} is disabled. Skipping gratuitous diff output..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
-            printf " Skipping...\n" && continue
-          fi
+          printf "Closing.\n" && exit 1
         fi
       fi
-      cd "${ABS_CONF_EXPORT_DIR}" || exit 1
     fi
+  fi
+
+  if [[ -d ${ABS_SRC_DIR}/config/install ]]; then
     # Git branch output information
     cd "${ABS_SRC_DIR}"/config/install || exit 1
     printf "%s\nGit branch: $(git branch --show-current)\n" "${SRC_DIR}"
@@ -268,7 +276,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     fi
     echo ""
     Verbose "Comparing %s/config/install and %s configs by doing... \n" "${SRC_DIR}" "${CONF_EXPORT_DIR}"
-  else
+  else # Directory doesn't exist - skip/close
     Issue "The ${SRC_DIR}/config/install folder does not exist. " "${WCT_WARNING}"
     if [[ $FIRST_PROJECT == "$LAST_PROJECT" ]]; then
       printf "Closing.\n" && exit 1
@@ -289,10 +297,10 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     if [[ $NEW_YML_FILES != "" ]]; then
       echo "${NEW_YML_FILES}" >> "${COMMANDS_FILE}"
       NEW_YMLS_INSERTED=$((NEW_YMLS_INSERTED+1))
-      echo "##NO-PATCH## - " "$(Issue "Added $(echo "${NEW_YML_FILES}" | wc -l) new YML files for review first." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
+      # ALL option logging
+      [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - " "$(Issue "Added $(echo "${NEW_YML_FILES}" | wc -l) new YML files for review first." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
     fi
   fi
-
 
   # Adding original, existing YML files
   ls -a >> "${COMMANDS_FILE}"
@@ -308,19 +316,19 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   # ALL option logging
   if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
     if [[ -s "${DIFFS}" ]]; then # File not empty?
-      Verbose " - Adding diff contents to %s" "${ALL_DIFFS}"
+      Verbose " - Adding diff contents to %s..." "${ALL_DIFFS}"
       cat "${DIFFS}" >> "${ALL_DIFFS}"
       Verbose "DONE\n\n"
     else
-      echo "##NO-PATCH## - " "$(Issue "${DIFFS} is empty - Nothing to add..." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
+      echo "##NO-PATCH## - $(Issue "${DIFFS} is empty - Nothing to add..." "${WCT_OK}" 1 )" >> "${ALL_DIFFS}"
     fi
   fi
-
 done
 
-# Open diff (individual or ALL) file for review (if not empty)
+####################################### END FOR LOOP
+
+# Open diff (individual or ALL) file in TEXT_EDITOR for review
 BarrierMinor
-OUTPUT=$([[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "${ALL_DIFFS}" || echo "${DIFFS}")
 if [[ -s "${OUTPUT}" ]]; then
   Verbose "Opening %s in %s...\n"  "${OUTPUT}" "${TEXT_EDITOR}"
   "${TEXT_EDITOR}" "${OUTPUT}"
@@ -337,8 +345,9 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   # Optionally keep diff(s) file(s) (disabled by default)
   if [[ ${MANUAL_DIFF_REVIEW} == 1 ]]; then
     [[ $i == "${FIRST_PROJECT}" ]] && echo "The following files were kept for review:"
-    echo " - ~/${PROJECTS_DIR}${SRC_DIR}""/config/install/""${DIFFS}"
-    echo " - ~/${PROJECTS_DIR}${SRC_DIR}""/config/install/""${COMMANDS_FILE}"
+    # shellcheck disable=SC2153
+    echo " - ~/${PROJECTS_DIR}${SRC_DIR}/config/install/${DIFFS}"
+    echo " - ~/${PROJECTS_DIR}${SRC_DIR}/config/install/${COMMANDS_FILE}"
     if [[ $FIRST_PROJECT != "${LAST_PROJECT}" && ${LAST_PROJECT} == "$i" ]]; then
       echo " - ""${ALL_DIFFS}"
       Verbose "Remember to delete these files when done reviewing!\n" "${COMMANDS_FILE}" "${DIFFS}"
