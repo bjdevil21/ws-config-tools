@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+SCRIPT_ROOT=$(pwd)
+if [[ -f "${SCRIPT_ROOT}"/user_settings/d9_config_diff_gen.vars ]]; then
+  source "${SCRIPT_ROOT}"/user_settings/d9_config_diff_gen.vars
+elif [[ -f "${SCRIPT_ROOT}"/etc/d9_config_diff_gen.default.vars ]]; then
+  source "${SCRIPT_ROOT}"/etc/d9_config_diff_gen.default.vars
+else
+  echo "ERROR: *.vars file cannot be found. Exiting." && exit 1
+fi
+
+###########################################
+# CONFIGURATION
+# DO NOT CHANGE ANYTHING BELOW THIS LINE
+###########################################
+
+COMMANDS_FILE=_ws2_diff_commands.bash
+DIFFS=_configs.diff
+ALL_DIFFS="${SCRIPT_ROOT}"/_allspark${DIFFS}
+MANUAL_DIFF_REVIEW=0
+VERIFY_GIT_STATUS=0
+_V=0
+RERUN_EXPORT=0
+COPY_EXPORT_START=0
+PROJECT_CHECK=1
+DIFF_FLAGS="uNwEbB"
+NEW_YMLS_INSERTED=0
+WEB_ROOT=${USER_DIR_ROOT}/${RELATIVE_WEB_ROOT}
+ABS_CONF_EXPORT_DIR=${USER_DIR_ROOT}${CONF_EXPORT_DIR} # Absolute configs directory
+GH_PROJECTS_DIR=${USER_DIR_ROOT}${PROJECTS_DIR}
+RERUN_EXPORT_DIR=${EXPORT_DIR_LEVEL}${CONF_EXPORT_DIR} # Drush export directory
+COPY_EXPORT_START_DIR="${ABS_CONF_EXPORT_DIR}_start"
+
+# Bash script version
+VERSION=1.0.0
+
+export PROJECTS_DIR CONF_EXPORT_DIR TEXT_EDITOR
+export SCRIPT_ROOT COMMANDS_FILE DIFFS ALL_DIFFS MANUAL_DIFF_REVIEW VERIFY_GIT_STATUS _V RERUN_EXPORT COPY_EXPORT_START PROJECT_CHECK DIFF_FLAGS NEW_YMLS_INSERTED
+export WEB_ROOT ABS_CONF_EXPORT_DIR GH_PROJECTS_DIR RERUN_EXPORT_DIR COPY_EXPORT_START_DIR VERSION

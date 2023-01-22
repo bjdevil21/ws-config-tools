@@ -16,7 +16,7 @@
 source ./lib/global.bash || exit 1
 BashVersionCheck 4 3
 UserRootDirCheck
-source ./etc/d9_config_diff_gen.settings || exit 1
+source ./lib/d9_config_diff_gen.settings || exit 1
 . "${USER_DIR_ROOT}"/.bashrc  # Bash FYI - . is the same as source
 
 # HELPER FUNCTIONS
@@ -131,8 +131,7 @@ while getopts "cghkrRvVzZ" option; do
   esac
 done
 
-# START SCRIPT BODY
-
+# SCRIPT EXEC
 # Get and select project directories
 declare -a DIR_OPTIONS=()
 KEY=0
