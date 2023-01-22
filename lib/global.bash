@@ -64,22 +64,26 @@ IssueLevels() {
 # $2 - (str) input level (use the constants above) (defaults to IssueLevel case default - MSG)
 # $3 - (int) (optional) If == 1, hides the top and bottom barriers (defaults to showing them)
 Issue() {
-  [[ $3 != 1 ]] && BarrierMinor
+  [[ $3 != 1 ]] && BarrierMinor 0
   local IssueLevel=$2
   printf "%s" "$(IssueLevels "${IssueLevel}")"
   #printf "%s" "$@"
   printf "%s" "$1"
-  [[ $3 != 1 ]] && echo "" && BarrierMinor
+  [[ $3 != 1 ]] && echo "" && BarrierMinor 0
 }
 
 # BarrierMajor() - Outputs a simple, think barrier
 # No input params
 BarrierMajor() {
-  echo '============================'
+  [[ $1 == 1 || $1 == 3 ]] && echo ""
+  echo '==================================='
+  [[ $1 == 2 || $1 == 3 ]] && echo ""
 }
 
 # BarrierMajor() - Outputs a simple, thin barrier
 # No input params
 BarrierMinor() {
+  [[ $1 == 2 || $1 == 3 ]] && echo ""
   echo '----------------------------'
+  [[ $1 == 2 || $1 == 3 ]] && echo ""
 }

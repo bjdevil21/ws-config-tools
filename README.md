@@ -5,41 +5,54 @@ This Bash script helps identify which YML files need to be added to Git commits 
 ## Installation & Setup
 
 ### Requirements
+
 #### Local Environment
 - macOS or Linux (no Windows support)
 - Bash >= v4.3 from the CLI
 - A working web dev environment that works with Webspark 2 (MAMP, LAMP, etc.)
 - A local directory with all of your local Git clones of any Webspark projects.
   - The project directories must start with "webspark-(theme|profile|module)?-" or the script will not see them to be checked.
+
 #### Required script files
-   - d9_config_diff_gen.bash - the Bash script to execute
-   - etc/d9_config_diff_gen.settings
-   - lib/global.bash
+- d9_config_diff_gen.bash
+- etc
+  - d9_config_diff_gen.default.vars
+- lib
+  - global.bash
+  - d9_config_diff_gen.settings
+  - d9_config_diff_gen.functions
+
+##### Optional
+- user_settings
+  - d9_config_diff_gen.vars (copy of the default.vars file with your own settings)
 
 ### Setup
 
 1. Clone this repo down to a directory that is accessible by your local site's Drush install. (Ex. ~/Desktop/webspark-config-tools, etc.)
 2. Create a new directory that is SEPARATE FROM YOUR WS2 SITE'S current export config directory (defaults to ../config). This is where this script will export your local site's active configurations. (Ex. ~/Desktop/active_configs). It must be reachable by Drush with a relative directory path.
-3. Open the d9_config_diff_gen.settings file in a text editor and set the five configurations, following Bash syntax rules. (See that file's comments for assistance).
+3. Create a new "user_settings" directory (in the script's root dir) and copy the d9_config_diff_gen.default.vars file over as d9_config_diff_gen.vars.
+4. Set the five d9_config_diff_gen.vars variables (see the file's notes for help).
 
 ## Usage
 
-1. Open this directory in a terminal (CLI).
-2. Type *bash d9_config_diff_gen.bash* to run. When prompted, select which project to check (enter 1..N), and a diff file will be opened for review in your choice of text editor (see settings file).
+1. Open this project's directory in a terminal (CLI).
+2. Run the main script - _*bash d9_config_diff_gen.bash*_. When prompted, select which project's config files to check (enter 1..N), and a diff file will be opened for review in your choice of text editor (see settings file).
 3. Close the file when done reviewing. By default, when the diff file text editor is closed, the generated diff file (and command file that made it) are deleted.
 
-#### Options (flags)
+### Options (flags)
 
 These flags can be combined (i.e. -kgV, -cr, etc.), with -z and -Z combining most of the options.
 
 - -k Keep diff and command files for manual review in the /config/install directory of the compared project.
 - -g Interactively verify Git branch status for each project
 - -r Re-run Drush export of active configs into $CONF_EXPORT_DIR
-- -R - Same as -r, but with additional 'start point' config export to compare later for new YML files
+- -R - Same as -r, but with an additional 'start point' config export
+  - This output will be used to find new YML files. Use this when starting a new ticket/task.
+  - If you skip this step, plan on looking for new YML files your dev work may generate in the site's active config directory.
 - -c Skips Drush check if project is enabled (disabled projects bloat the config diff output)
 - -V Verbose output
-- -z Extra careful mode
-- -Z Extra careful mode (verbose)
+- -z Extra careful mode - same as -kgr
+- -Z Extra careful mode (verbose) - same as -kgrV
 - -v Script version
 - -h Returns this help message
 

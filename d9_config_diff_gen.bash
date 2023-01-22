@@ -1,99 +1,20 @@
 #!/usr/bin/env bash
-##
+#############################
 # Webspark 2 configuration file diff checker
-# The following files are required:
-# - d9_config_diff_gen.bash
-# - etc
-#   - d9_config_diff_gen.settings
-# - lib
-#   - global.bash
-# See Help() on using the script
-##
+# See README.md for help with settings.
+# See Help() on script usage.
+##############################
 
-# IDE and OS checks
+# SETUP
 # shellcheck disable=SC2188
-
 source ./lib/global.bash || exit 1
 BashVersionCheck 4 3
 UserRootDirCheck
 source ./lib/d9_config_diff_gen.settings || exit 1
+source ./lib/d9_config_diff_gen.functions || exit 1
 . "${USER_DIR_ROOT}"/.bashrc  # Bash FYI - . is the same as source
 
-# HELPER FUNCTIONS
-
-# Help() - Output help docs
-function Help {
-  # Display Help
-  echo ""
-  echo "Webspark 2 configuration file diff checker"
-  echo ""
-  echo "Generates and opens a diff file between the module's current config files and your local D9 dev site's exported "
-  echo "config files."
-  echo "By default, the diff file are deleted after being opened and viewed."
-  echo ""
-  echo "Notes:"
-  echo "* You MUST configure your options in a corresponding ./etc/d9_config_diff_gen.settings file before using this script."
-  echo "* This script currently only checks a project's /config/install directories. It does not check other YML files"
-  echo "  (in the root directory, other /config directories, etc.)"
-  echo ""
-  echo "Flags (options):"
-  echo "  -k - Keep diff and command files for manual review in the /config/install directory of the compared project."
-  echo "  -g - Interactively verify Git branch status for each project"
-  printf "  -r - Re-run Drush export of active configs into ~/%s \n" "${CONF_EXPORT_DIR}"
-  echo " -R - -r plus creates/overwrites second 'starting point' export dir (to compare later for new YML files)"
-  echo "  -c - Skip Drush check if project is enabled (by default, disabled projects bloat the config diff output)"
-  echo "  -V - Verbose output"
-  echo "  -z - Extra careful mode"
-  echo "  -Z - Extra careful mode (verbose)"
-  echo "  -v - Returns version of script"
-  echo "  -h - Returns this help message"
-  exit 0
-}
-# Is the project a valid project to check?
-# $1 (int) - Directory to be checked
-function ProjectVerify {
-  if [[ $1 =~ "webspark-module-".* || $1 =~ "webspark-theme-".* || $1 =~ "webspark-profile-".* ]]; then
-    echo "true"
-  else
-    echo "false"
-  fi
-}
-# Prepare active configs directory
-# No input params
-function PrepConfigDir {
-  if [[ -d "${ABS_CONF_EXPORT_DIR}" ]]; then
-    find "${ABS_CONF_EXPORT_DIR}" -type f -not -name "*.yml" -exec rm {} \; # Delete non-YML files from config dir
-    YML_COUNT=$(find "${ABS_CONF_EXPORT_DIR}" -type f -name "*.yml" 2>/dev/null | wc -l)
-    if [[ ${YML_COUNT} != 0 ]]; then
-      if [[ ${RERUN_EXPORT} == 1 ]]; then
-        Verbose "Emptying %s directory..." "${ABS_CONF_EXPORT_DIR}"
-        rm "${ABS_CONF_EXPORT_DIR}"/*
-        Verbose "DONE.\n"
-      fi
-    else
-      RERUN_EXPORT=1 # Forcing rebuild to populate empty directory
-    fi
-  else
-    Verbose "\nNotice: %s does not exist. Creating directory..." "${ABS_CONF_EXPORT_DIR}"
-    mkdir "${ABS_CONF_EXPORT_DIR}" || exit 1
-    Verbose "DONE.\n"
-    if [[ "${RERUN_EXPORT}" == 0 ]]; then
-      RERUN_EXPORT=1 # Forcing rebuild to populate directory
-    fi
-  fi
-}
-# Resets config directory names/locations
-# $1 (int) - Assigned project number from assembled list
-# $2 (int) - If 1, output current project messaging
-function UpdateConfDirs {
-  if [[ $2 == 1 ]]; then
-    printf "\n\n%s\n" "$(printf "## Project %d - %s ##" "$1" "${DIR_OPTIONS[$1]}")"
-  fi
-  SRC_DIR=${DIR_OPTIONS[$1]}
-  ABS_SRC_DIR=${GH_PROJECTS_DIR}${SRC_DIR}
-}
-
-# SCRIPT OPTIONS
+# OPTIONS
 while getopts "cghkrRvVzZ" option; do
   case "${option}" in
   c) # Skip Drush check to see if project is enabled?
@@ -106,7 +27,7 @@ while getopts "cghkrRvVzZ" option; do
     MANUAL_DIFF_REVIEW=1;;
   r) # Re-run Drush export
     RERUN_EXPORT=1;;
-  R) # Re-run Drush export AND create alt copy for comparison/contrast
+  R) # Re-run Drush export AND create alt copy for YML file comparison/contrast. (Run this before every task/ticket is started.)
     RERUN_EXPORT=1
     COPY_EXPORT_START=1;;
   v) # Return script version
@@ -131,7 +52,7 @@ while getopts "cghkrRvVzZ" option; do
   esac
 done
 
-# SCRIPT EXEC
+# EXEC
 # Get and select project directories
 declare -a DIR_OPTIONS=()
 KEY=0
@@ -246,7 +167,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     PROJECT_YML_INFO=$(find "${ABS_SRC_DIR}"/ -maxdepth 1 -type f -printf "%f\n" | grep ".info.yml" | sed -r 's/.info.yml//')
     if [[ "${PROJECT_YML_INFO}" != '' ]]; then
       if [[ $(drush pm-list --pipe --status=enabled --type=module --no-core | grep "\(${PROJECT_YML_INFO}\)" | cut -f 3) ]]; then
-        Verbose "%s is enabled and will be reviewed.\n" "${PROJECT_YML_INFO}"
+        Verbose "%s is enabled.\n" "${PROJECT_YML_INFO}"
       else
         Issue "${PROJECT_YML_INFO} is disabled. " "${WCT_WARNING}"
         # ALL option logging
@@ -260,8 +181,8 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     fi
   fi
 
+  # Git branch output information
   if [[ -d ${ABS_SRC_DIR}/config/install ]]; then
-    # Git branch output information
     cd "${ABS_SRC_DIR}"/config/install || exit 1
     printf "%s\nGit branch: $(git branch --show-current)\n" "${SRC_DIR}"
     TMP_GIT_BRANCH="$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')"
@@ -280,6 +201,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     if [[ $FIRST_PROJECT == "$LAST_PROJECT" ]]; then
       printf "Closing.\n" && exit 1
     else
+      # ALL option logging
       echo "##NO-PATCH## - " "$(Issue "${SRC_DIR}/config/install folder does not exist. Skipping..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
       printf "Skipping...\n" && continue
     fi
@@ -296,6 +218,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     if [[ $NEW_YML_FILES != "" ]]; then
       echo "${NEW_YML_FILES}" >> "${COMMANDS_FILE}"
       NEW_YMLS_INSERTED=$((NEW_YMLS_INSERTED+1))
+      NEW_YML_FILES=''
       # ALL option logging
       [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - " "$(Issue "Added $(echo "${NEW_YML_FILES}" | wc -l) new YML files for review first." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
     fi
