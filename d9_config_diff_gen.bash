@@ -161,7 +161,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   # ALL option logging
   [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - Project ${i} of ${LAST_PROJECT}: ${SRC_DIR}" >> "${ALL_DIFFS}"
 
-  # Check if project is enabled
+  # Drush: Check if project is enabled
   if [[ "${PROJECT_CHECK}" == 1 ]]; then
     # Get project name from *.info.yml file
     cd "${WEB_ROOT}" || exit 1

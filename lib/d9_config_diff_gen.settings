@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 
+###########################################
+# CONFIGURATION
+# DO NOT CHANGE ANYTHING BELOW THIS LINE
+###########################################
+
 SCRIPT_ROOT=$(pwd)
-if [[ -f "${SCRIPT_ROOT}"/user_settings/d9_config_diff_gen.vars ]]; then
-  source "${SCRIPT_ROOT}"/user_settings/d9_config_diff_gen.vars
+if [[ -f "${SCRIPT_ROOT}"/user_settings/d9_config_diff_gen.my.vars ]]; then
+  source "${SCRIPT_ROOT}"/user_settings/d9_config_diff_gen.my.vars
 elif [[ -f "${SCRIPT_ROOT}"/etc/d9_config_diff_gen.default.vars ]]; then
   source "${SCRIPT_ROOT}"/etc/d9_config_diff_gen.default.vars
 else
   echo "ERROR: *.vars file cannot be found. Exiting." && exit 1
 fi
 
-###########################################
-# CONFIGURATION
-# DO NOT CHANGE ANYTHING BELOW THIS LINE
-###########################################
-
-COMMANDS_FILE=_ws2_diff_commands.bash
-DIFFS=_configs.diff
-ALL_DIFFS="${SCRIPT_ROOT}"/_allspark${DIFFS}
+COMMANDS_FILE=_diff_commands.bash
+DIFFS=_config_changes.diff
+ALL_DIFFS="${SCRIPT_ROOT}"/_ALL_PROJ${DIFFS}
 declare -r -A CONF_DIR_TYPES=( [install]="install" [optional]="optional" [schema]="schema" )
 MANUAL_DIFF_REVIEW=0
 VERIFY_GIT_STATUS=0

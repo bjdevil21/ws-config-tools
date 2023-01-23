@@ -24,7 +24,7 @@ This Bash script helps identify which YML files need to be added to Git commits 
 
 ##### Optional
 - user_settings
-  - d9_config_diff_gen.vars (copy of the default.vars file with your own settings)
+  - d9_config_diff_gen.my.vars (copy of the default.vars file with your own settings)
 
 ### Setup
 
