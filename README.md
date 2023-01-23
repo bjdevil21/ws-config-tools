@@ -1,6 +1,6 @@
 # webspark-config-tools - Webspark 2.x configuration file (.yml) diff checker
 
-This Bash script helps identify which YML files need to be added to Git commits by generating a diff (patch) file between a project's ./config/install YML files and your local D9 dev site's exported active configuration files.
+This Bash script helps identify which YML files need to be added to Git commits by generating a diff (patch) file between a project's ./config YML files and your local D9 dev site's exported active configuration files.
 
 ## Installation & Setup
 
@@ -43,7 +43,7 @@ This Bash script helps identify which YML files need to be added to Git commits 
 
 These flags can be combined (i.e. -kgV, -cr, etc.), with -z and -Z combining most of the options.
 
-- -k Keep diff and command files for manual review in the /config/install directory of the compared project.
+- -m Keep diff and command files for manual review
 - -g Interactively verify Git branch status for each project
 - -r Re-run Drush export of active configs into $CONF_EXPORT_DIR
 - -R - Same as -r, but with an additional 'start point' config export
@@ -57,4 +57,4 @@ These flags can be combined (i.e. -kgV, -cr, etc.), with -z and -Z combining mos
 - -h Returns this help message
 
 ## NOTES
-- This script currently only checks a project's /config/install directories. It does not check any other YML files (in the root directory, other /config directories, etc.) Future versions may check other YML files as well.
+- This script currently checks all three project config directories (install, optional, schema). It does not check any other YML files (in the root directory, other /config directories, etc.) Future versions may check other YML files as well.

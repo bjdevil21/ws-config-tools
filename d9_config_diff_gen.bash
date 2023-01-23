@@ -15,7 +15,7 @@ source ./lib/d9_config_diff_gen.functions || exit 1
 . "${USER_DIR_ROOT}"/.bashrc  # Bash FYI - . is the same as source
 
 # OPTIONS
-while getopts "cghkrRvVzZ" option; do
+while getopts "cghmrRvVzZ" option; do
   case "${option}" in
   c) # Skip Drush check to see if project is enabled?
     PROJECT_CHECK=0;;
@@ -23,7 +23,7 @@ while getopts "cghkrRvVzZ" option; do
     VERIFY_GIT_STATUS=1;;
   h) # Outputs help content
     Help;;
-  k) # Keep files for manual review
+  m) # Keep generated files for manual review
     MANUAL_DIFF_REVIEW=1;;
   r) # Re-run Drush export
     RERUN_EXPORT=1;;
@@ -54,7 +54,8 @@ done
 
 # EXEC
 # Get and select project directories
-declare -a DIR_OPTIONS=()
+declare -a PROJECTS_AVAILABLE=()
+declare -a FILES_GENERATED=()
 KEY=0
 MISSED_KEY=0
 for i in "${GH_PROJECTS_DIR}"/* ; do
@@ -67,7 +68,7 @@ for i in "${GH_PROJECTS_DIR}"/* ; do
         printf "Eligible project(s) found in %s: \n" "${GH_PROJECTS_DIR}"
         BarrierMajor
       fi
-      DIR_OPTIONS[$KEY]=$PROJECT_DIR
+      PROJECTS_AVAILABLE[$KEY]=$PROJECT_DIR
       printf "%s) %s\n" ${KEY} "${PROJECT_DIR}"
     else
       MISSED_KEY=$((MISSED_KEY+1))
@@ -75,27 +76,27 @@ for i in "${GH_PROJECTS_DIR}"/* ; do
   fi
 done
 KEY=$((KEY+1)) ## Manually add ALL option
-DIR_OPTIONS[$KEY]="ALL"
-printf "%s) %s\n" ${KEY} "${DIR_OPTIONS[$KEY]}"
+PROJECTS_AVAILABLE[$KEY]="ALL"
+printf "%s) %s\n" ${KEY} "${PROJECTS_AVAILABLE[$KEY]}"
 
 [[ ${MISSED_KEY} -gt 0 ]] && Verbose "\n( Ignored %s incompatible directories )\n\n" ${MISSED_KEY}
 printf "Project's configs to compare (Enter 1-%d)? " "${KEY}"
 read -r which_project
-if [[ ${DIR_OPTIONS[$which_project]} == '' ]]; then
+if [[ ${PROJECTS_AVAILABLE[$which_project]} == '' ]]; then
   Issue "Invalid project selection. Closing..." "${WCT_ERROR}"
   exit 1
 elif [[ $which_project == "${KEY}" ]]; then # ALL option
   FIRST_PROJECT=1
   LAST_PROJECT=$((KEY-1)) # Get 'em all
-  OUTPUT="${ALL_DIFFS}"
+  # shellcheck disable=SC2153
   > "${ALL_DIFFS}"
 else # Single project
   FIRST_PROJECT=${which_project}
   LAST_PROJECT="${FIRST_PROJECT}"
-  OUTPUT="${DIFFS}"
 fi
 
 PrepConfigDir
+
 # Drush rerun active configs export
 if [[ ${RERUN_EXPORT} == 1 ]]; then
   Verbose "Drush exporting the local dev site\'s config files into %s...\n" "${ABS_CONF_EXPORT_DIR}"
@@ -150,7 +151,7 @@ else # Skip all exports
   fi
 fi
 
-cd "${ABS_CONF_EXPORT_DIR}" || exit 1 # does this matter here?
+cd "${ABS_CONF_EXPORT_DIR}" || exit 1
 
 #################################### BEGIN FOR LOOP
 # Process each project
@@ -167,7 +168,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     PROJECT_YML_INFO=$(find "${ABS_SRC_DIR}"/ -maxdepth 1 -type f -printf "%f\n" | grep ".info.yml" | sed -r 's/.info.yml//')
     if [[ "${PROJECT_YML_INFO}" != '' ]]; then
       if [[ $(drush pm-list --pipe --status=enabled --type=module --no-core | grep "\(${PROJECT_YML_INFO}\)" | cut -f 3) ]]; then
-        Verbose "%s is enabled.\n" "${PROJECT_YML_INFO}"
+        Verbose "Drush check: %s is enabled.\n" "${PROJECT_YML_INFO}"
       else
         Issue "${PROJECT_YML_INFO} is disabled. " "${WCT_WARNING}"
         # ALL option logging
@@ -181,111 +182,119 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     fi
   fi
 
-  # Git branch output information
-  if [[ -d ${ABS_SRC_DIR}/config/install ]]; then
-    cd "${ABS_SRC_DIR}"/config/install || exit 1
+  if [[ -d ${ABS_SRC_DIR}/config/ ]]; then
+    cd "${ABS_SRC_DIR}/config" || exit 1
+    # Project's Git branch information for review
     printf "%s\nGit branch: $(git branch --show-current)\n" "${SRC_DIR}"
-    TMP_GIT_BRANCH="$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')"
-    git fetch origin "${TMP_GIT_BRANCH}" --dry-run -v # Check default project branch for updates
-    # Optional Git confirmation step (disabled by default)
+    GIT_BRANCH="$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')"
+    git fetch origin "${GIT_BRANCH}" --dry-run -v # Check default project branch for updates
+    # Optional Git confirmation step
     if [[ $VERIFY_GIT_STATUS == 1 ]]; then
       Verbose "\n* IMPORTANT: If the Git output above doesn't say \"[up to date]\", you need to consider pulling and integrating the latest upstream changes "
-      Verbose "from %s before continuing...\n" "${TMP_GIT_BRANCH}"
+      Verbose "from %s before continuing...\n" "${GIT_BRANCH}"
       printf "\n-- Hit Enter/Return to continue (or Ctrl-C to Cancel if you want to change branches, pull remote updates, etc.) ** "
       read -r
     fi
+    # Spawn per-project DIFFS file in ${SRC_DIR}/config/ directory
+    > "${DIFFS}"
     echo ""
-    Verbose "Comparing %s/config/install and %s configs by doing... \n" "${SRC_DIR}" "${CONF_EXPORT_DIR}"
-  else # Directory doesn't exist - skip/close
-    Issue "The ${SRC_DIR}/config/install folder does not exist. " "${WCT_WARNING}"
+    FILES_GENERATED+=("${ABS_SRC_DIR}/config/${DIFFS}")
+
+    for TYPE in "${!CONF_DIR_TYPES[@]}"; do
+      cd "${ABS_SRC_DIR}/config" || exit 1
+      if [[ -d ./${TYPE} ]]; then
+        if [[ $(ls -A ./"${TYPE}" | grep -E "^.+\.yml$") ]]; then
+          cd "${TYPE}" || exit 1
+          # Clear and rebuild COMMANDS_FILE for each subdirectory (TYPE)
+          > "${COMMANDS_FILE}"
+          FILES_GENERATED+=("${ABS_SRC_DIR}/config/${TYPE}/${COMMANDS_FILE}")
+          Verbose "\n"
+          Verbose "Comparing %s/config/%s and %s configs by:\n" "${SRC_DIR}" "${TYPE}" "${CONF_EXPORT_DIR}"
+          Verbose " - 1 of 2) Generating %s in %s/config/%s..." "${COMMANDS_FILE}" "${SRC_DIR}" "${TYPE}"
+          # Add newly generated YML files as diffs -- ONCE ONLY
+          if [[ $NEW_YMLS_INSERTED == 0 ]]; then
+            NEW_YML_FILES=$(LC_ALL=C diff -qr "${COPY_EXPORT_START_DIR}" "${ABS_CONF_EXPORT_DIR}" | grep -E "^Only in ${ABS_CONF_EXPORT_DIR}: .+\.yml$" | sed -e 's/^Only in .*:[[:space:]]*//g')
+            if [[ $NEW_YML_FILES != "" ]]; then
+              echo "${NEW_YML_FILES}" >> "${COMMANDS_FILE}"
+              NEW_YMLS_INSERTED=$((NEW_YMLS_INSERTED+1))
+              NEW_YML_FILES=''
+              # ALL option logging
+              [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - " "$(Issue "Added $(echo "${NEW_YML_FILES}" | wc -l) new YML files for review first." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
+            fi
+          fi
+          # Adding original, existing YML files
+          ls -a >> "${COMMANDS_FILE}"
+          # Generates new diffs between the module (<) and the current config output (>)
+          perl -pi -e 's/^.*(?<!\.yml)$//g' "${COMMANDS_FILE}" && sed -i '/^[[:space:]]*$/d' "${COMMANDS_FILE}" && sed -i '/^[[:blank:]]*$/ d' "${COMMANDS_FILE}"
+          perl -pi -e "s!^(.+?)\$!diff -${DIFF_FLAGS} ${ABS_SRC_DIR}/config/${TYPE}/\$1 ${ABS_CONF_EXPORT_DIR}/\$1 >> ../${DIFFS}!g" "${COMMANDS_FILE}"
+          Verbose "DONE\n"
+          Verbose " - 2 of 2) Appending new diffs to %s/config/%s..." "${SRC_DIR}" "${DIFFS}"
+          bash "${COMMANDS_FILE}"
+          Verbose "DONE\n"
+        else
+          Verbose "The ${SRC_DIR}/config/${TYPE}} folder doesn't have any YML files. Skipping...\n"
+        fi
+      else # Config subdirectory doesn't exist - skip
+        Verbose "The ${SRC_DIR}/config/${TYPE} folderrrr does not exist. Skipping...\n"
+        continue
+      fi
+    done
+    cd "${ABS_SRC_DIR}/config" || exit 1
+    # ALL option logging
+    if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
+      if [[ -s "${DIFFS}" ]]; then # Are there diffs to add in any of the project?
+        Verbose " - Adding all project diff contents to %s..." "${ALL_DIFFS}"
+        cat "${DIFFS}" >> "${ALL_DIFFS}"
+        Verbose "DONE\n\n"
+      else
+        echo "##NO-PATCH## - $(Issue "${DIFFS} is empty - Nothing to add..." "${WCT_OK}" 1 )" >> "${ALL_DIFFS}"
+      fi
+    fi
+  else # Config directory doesn't exist - Skip project
+    Issue "The ${SRC_DIR}/config folder does not exist. " "${WCT_WARNING}"
     if [[ $FIRST_PROJECT == "$LAST_PROJECT" ]]; then
       printf "Closing.\n" && exit 1
     else
       # ALL option logging
-      echo "##NO-PATCH## - " "$(Issue "${SRC_DIR}/config/install folder does not exist. Skipping..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
+      echo "##NO-PATCH## - " "$(Issue "${SRC_DIR}/config folder does not exist. Skipping..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
       printf "Skipping...\n" && continue
     fi
   fi
-
-  > "${COMMANDS_FILE}"
-  > "${DIFFS}"
-
-  Verbose " - 1 of 2) Generating diff commands file %s to be executed in %s/config/install..." "${COMMANDS_FILE}" "${SRC_DIR}"
-
-  # Add newly generated YML files as diffs -- ONCE ONLY
-  if [[ $NEW_YMLS_INSERTED == 0 ]]; then
-    NEW_YML_FILES=$(LC_ALL=C diff -qr "${COPY_EXPORT_START_DIR}" "${ABS_CONF_EXPORT_DIR}" | grep -E "^Only in ${ABS_CONF_EXPORT_DIR}: .+\.yml$" | sed -e 's/^Only in .*:[[:space:]]*//g')
-    if [[ $NEW_YML_FILES != "" ]]; then
-      echo "${NEW_YML_FILES}" >> "${COMMANDS_FILE}"
-      NEW_YMLS_INSERTED=$((NEW_YMLS_INSERTED+1))
-      NEW_YML_FILES=''
-      # ALL option logging
-      [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - " "$(Issue "Added $(echo "${NEW_YML_FILES}" | wc -l) new YML files for review first." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
-    fi
-  fi
-
-  # Adding original, existing YML files
-  ls -a >> "${COMMANDS_FILE}"
-
-  # Generates new diffs between the module (<) and the current config output (>)
-  perl -pi -e 's/^.*(?<!\.yml)$//g' "${COMMANDS_FILE}" && sed -i '/^[[:space:]]*$/d' "${COMMANDS_FILE}" && sed -i '/^[[:blank:]]*$/ d' "${COMMANDS_FILE}"
-  perl -pi -e "s!^(.+?)\$!diff -${DIFF_FLAGS} ./\$1 ${ABS_CONF_EXPORT_DIR}/\$1 >> ${DIFFS}!g" "${COMMANDS_FILE}"
-  Verbose "DONE\n"
-  Verbose " - 2 of 2) Executing diff file %s in %s/config/install..." "${DIFFS}" "${SRC_DIR}"
-  bash "${COMMANDS_FILE}"
-  Verbose "DONE\n"
-
-  # ALL option logging
-  if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
-    if [[ -s "${DIFFS}" ]]; then # File not empty?
-      Verbose " - Adding diff contents to %s..." "${ALL_DIFFS}"
-      cat "${DIFFS}" >> "${ALL_DIFFS}"
-      Verbose "DONE\n\n"
-    else
-      echo "##NO-PATCH## - $(Issue "${DIFFS} is empty - Nothing to add..." "${WCT_OK}" 1 )" >> "${ALL_DIFFS}"
-    fi
-  fi
 done
-
-####################################### END FOR LOOP
+# ALL option logging
+[[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && FILES_GENERATED+=("${ALL_DIFFS}")
 
 # Open diff (individual or ALL) file in TEXT_EDITOR for review
-BarrierMinor
+[[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && OUTPUT="${ALL_DIFFS}" || OUTPUT="${DIFFS}"
 if [[ -s "${OUTPUT}" ]]; then
-  Verbose "Opening %s in %s...\n"  "${OUTPUT}" "${TEXT_EDITOR}"
+  Verbose "\nOpening %s in %s...\n"  "${OUTPUT}" "${TEXT_EDITOR}"
   "${TEXT_EDITOR}" "${OUTPUT}"
   Verbose "Review complete.\n"
 else
-  Issue "No changes ${OUTPUT} to review. Skipping and deleting all generated diff and command files.\n" "${WCT_OK}"
+  Issue "No changes in ${OUTPUT} to review. Skipping and deleting all generated diff and command files." "${WCT_OK}"
   MANUAL_DIFF_REVIEW=0
 fi
-BarrierMinor
 
 ## Post-diff review - cleanup
-for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
-  UpdateConfDirs "${i}" 0
-  # Optionally keep diff(s) file(s) (disabled by default)
+###############################
+BarrierMajor 3
+if [[ ${#FILES_GENERATED[@]} -ge 1 ]]; then
   if [[ ${MANUAL_DIFF_REVIEW} == 1 ]]; then
-    [[ $i == "${FIRST_PROJECT}" ]] && echo "The following files were kept for review:"
-    # shellcheck disable=SC2153
-    echo " - ~/${PROJECTS_DIR}${SRC_DIR}/config/install/${DIFFS}"
-    echo " - ~/${PROJECTS_DIR}${SRC_DIR}/config/install/${COMMANDS_FILE}"
-    if [[ $FIRST_PROJECT != "${LAST_PROJECT}" && ${LAST_PROJECT} == "$i" ]]; then
-      echo " - ""${ALL_DIFFS}"
-      Verbose "Remember to delete these files when done reviewing!\n" "${COMMANDS_FILE}" "${DIFFS}"
-    fi
+    MESSAGE="The following files were kept for review:"
+    CLEANUP='echo'
   else
-    # Delete all files
-    Verbose "Deleting %s, %s files in %s if they exist... " "${COMMANDS_FILE}" "${DIFFS}" ${DIR_OPTIONS[$i]}
-    [[ -f "${ABS_SRC_DIR}"/config/install/"${COMMANDS_FILE}" ]] && rm "${ABS_SRC_DIR}"/config/install/"${COMMANDS_FILE}"
-    [[ -f "${ABS_SRC_DIR}"/config/install/"${DIFFS}" ]] && rm "${ABS_SRC_DIR}"/config/install/"${DIFFS}"
-    if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then # Delete ALL projects diff
-      [[ -f "${ALL_DIFFS}" ]] && rm "${ALL_DIFFS}"
-    fi
-    Verbose "DONE.\n"
+    MESSAGE=$(printf "Deleting generated files...\n")
+    CLEANUP='rm -v'
   fi
-done
+  for ((i=0; i <= ${#FILES_GENERATED[@]}; i++)); do
+    [[ $i == 0 ]] && echo "${MESSAGE}"
+    if [[ -f "${FILES_GENERATED[$i]}" ]]; then
+      $(echo "${CLEANUP}") "${FILES_GENERATED[$i]}"
+    fi
+  done
+fi
 
 # DONE
-printf "\nDONE.\n"
+BarrierMajor 3
+echo "DONE."
 exit
