@@ -1,6 +1,11 @@
-.idea
-_ALL_PROJ*
+# User customizations
 user_settings/*
+
+# Temp files
+_ALL*
 _config_changes.diff
 _diff_commands.bash
 *APPLY.patch
+
+# PHPStorm
+.idea

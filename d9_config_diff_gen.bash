@@ -97,7 +97,7 @@ else # Single project
   LAST_PROJECT="${FIRST_PROJECT}"
 fi
 
-PrepConfigDir
+PrepConfigDirs
 
 # Drush rerun active configs export
 if [[ ${RERUN_EXPORT} == 1 ]]; then
@@ -113,15 +113,15 @@ if [[ ${RERUN_EXPORT} == 1 ]]; then
   Verbose "DONE\n"
   echo ""
   if [[ ${COPY_EXPORT_START} == 1 ]]; then
-    if [[ -d "${COPY_EXPORT_START_DIR}" ]]; then
+    if [[ -d "${COPY_EXPORT_START_DIR}" && $(GetYMLCount "${COPY_EXPORT_START_DIR}") != 0 ]]; then
       BarrierMajor
-      printf "WARNING: %s already exists with your starting configurations before you started this task.\n" "${COPY_EXPORT_START_DIR}"
+      printf "WARNING: %s already exists, and presumably has your configurations from before you started this task.\n" "${COPY_EXPORT_START_DIR}"
       printf "Are you sure you want to overwrite it? (Enter Y to continue): "
       read -r overwrite_start
       if [[ "${overwrite_start}" == "Y" ]]; then
         BarrierMajor
-        printf "\nOk - Overwriting %s directory in 3 seconds..." "${COPY_EXPORT_START_DIR}"
-        sleep 3
+        printf "\nOverwriting %s directory in 3 seconds " "${COPY_EXPORT_START_DIR}"
+        ConsoleTimer 3 " "
         rm -rf "${COPY_EXPORT_START_DIR}" || exit 1
         cp -pr "${ABS_CONF_EXPORT_DIR}" "${COPY_EXPORT_START_DIR}" || exit 1
         printf "DONE.\n\n"
@@ -132,11 +132,11 @@ if [[ ${RERUN_EXPORT} == 1 ]]; then
         BarrierMinor
       fi
     else
-      Verbose "NOTICE: No %s was detected.\n" "${COPY_EXPORT_START_DIR}"
+      Verbose "WARNING: No %s with YML files detected.\n" "${COPY_EXPORT_START_DIR}"
       Verbose "Make sure to create this directory before work on a YML-altering\n"
       Verbose "task was started. If that didn't happen, then be sure to double\n"
       Verbose "check for new YML files created in the active_config directory\n"
-      Verbose "and review the Conf sync output in the Drupal UI.\n\n"
+      Verbose "and review the conf sync output in the Drupal UI.\n\n"
       printf "Copying %s over to %s..." "${ABS_CONF_EXPORT_DIR}" "${COPY_EXPORT_START_DIR}"
       cp -pr "${ABS_CONF_EXPORT_DIR}" "${COPY_EXPORT_START_DIR}" || exit 1
       printf "DONE.\n\n"
@@ -147,7 +147,7 @@ else # Skip all exports
     Issue "No YML files exist in ${RERUN_EXPORT_DIR}.\nRe-run with an option that rebuilds the active configs with Drush. Closing." "${WCT_ERROR}"
     exit 1
   else
-    Verbose "\n%s YML files found in %s directory, so skipping drush export and cleanup (by default).\n" "${YML_COUNT}" "${CONF_EXPORT_DIR}"
+    Verbose "\nINFO: %s YML files found in %s directory, so skipping drush export and cleanup (by default).\n" "${YML_COUNT}" "${CONF_EXPORT_DIR}"
     # shellcheck disable=SC2046
     Verbose " - YMLs last update: $(date -d @$(stat -c '%Y' .))\n"
   fi
@@ -160,7 +160,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   UpdateConfDirs "${i}" 1
   BarrierMajor
   # ALL option logging
-  [[ $FIRST_PROJECT != "${LAST_PROJECT}" && "${PATCH_MODE}" != 0 ]] && echo "##NO-PATCH## - Project ${i} of ${LAST_PROJECT}: ${SRC_DIR}" >> "${ALL_DIFFS}"
+  [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - Project ${i} of ${LAST_PROJECT}: ${SRC_DIR}" >> "${ALL_DIFFS}"
 
   # Drush: Check if project is enabled
   if [[ "${PROJECT_CHECK}" == 1 ]]; then
@@ -174,7 +174,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
         Issue "${PROJECT_YML_INFO} is disabled. " "${WCT_WARNING}"
         # ALL option logging
         if [[ $FIRST_PROJECT != "$LAST_PROJECT" ]]; then
-          [[ "${PATCH_MODE}" != 0 ]] && echo "##NO-PATCH## - " "$(Issue "${PROJECT_YML_INFO} is disabled. Skipping gratuitous diff output..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
+          echo "##NO-PATCH## - " "$(Issue "${PROJECT_YML_INFO} is disabled. Skipping gratuitous diff output..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
           printf "Skipping...\n" && continue
         else
           printf "Closing.\n" && exit 1
@@ -186,25 +186,34 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   if [[ -d ${ABS_SRC_DIR}/config/ ]]; then
     cd "${ABS_SRC_DIR}/config" || exit 1
     # Project's Git branch information for review
-    printf "%s\nGit branch: $(git branch --show-current)\n" "${SRC_DIR}"
+    BarrierMajor 1
     GIT_BRANCH="$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')"
+    GIT_CURRENT_BRANCH=$(git branch --show-current) || exit 1 # Not a Git project
+    printf "%s\nCurrent Git branch: %s\n" "${SRC_DIR}" "${GIT_CURRENT_BRANCH}"
+
+    BarrierMinor
+
     git fetch origin "${GIT_BRANCH}" --dry-run -v # Check default project branch for updates
     # Optional Git confirmation step
     if [[ $VERIFY_GIT_STATUS == 1 ]]; then
-      Verbose "\n* IMPORTANT: If the Git output above doesn't say \"[up to date]\", you need to consider pulling and integrating the latest upstream changes "
-      Verbose "from %s before continuing...\n" "${GIT_BRANCH}"
-      printf "\n-- Hit Enter/Return to continue (or Ctrl-C to Cancel if you want to change branches, pull remote updates, etc.) ** "
+      Verbose "\n* NOTICE: If the Git output above doesn't say \"[up to date]\", consider stopping to pull down and integrate the latest upstream commits. "
+      if [[ ${GIT_CURRENT_BRANCH} != "${GIT_BRANCH}" ]]; then
+        printf "\n* NOTICE: %s is not on the project's %s branch.\n" "${SRC_DIR}" "${GIT_BRANCH}"
+      fi
+      printf "\n-- Hit Enter/Return to continue (or Ctrl-C to Cancel if you want to stop... ** "
       read -r
+      BarrierMinor
     fi
     # Spawn per-project DIFFS file in ${SRC_DIR}/config/ directory
     > "${DIFFS}"
     echo ""
+    printf "Checking configs...\n"
     FILES_GENERATED+=("${ABS_SRC_DIR}/config/${DIFFS}")
 
     for TYPE in "${!CONF_DIR_TYPES[@]}"; do
       cd "${ABS_SRC_DIR}/config" || exit 1
       if [[ -d ./${TYPE} ]]; then
-        if [[ $(ls -A ./"${TYPE}" | grep -E "^.+\.yml$") ]]; then
+        if [[ $(GetYMLCount "./${TYPE}" gt 0) ]]; then
           cd "${TYPE}" || exit 1
           # Clear and rebuild COMMANDS_FILE for each subdirectory (TYPE)
           > "${COMMANDS_FILE}"
@@ -220,7 +229,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
               NEW_YMLS_INSERTED=$((NEW_YMLS_INSERTED+1))
               NEW_YML_FILES=''
               # ALL option logging
-              [[ $FIRST_PROJECT != "${LAST_PROJECT}" && "${PATCH_MODE}" != 0 ]] && echo "##NO-PATCH## - " "$(Issue "Added $(echo "${NEW_YML_FILES}" | wc -l) new YML files for review first." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
+              [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - " "$(Issue "Added $(echo "${NEW_YML_FILES}" | wc -l) new YML files for review first." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
             fi
           fi
           # Adding original, existing YML files
@@ -236,7 +245,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
           Verbose "The ${SRC_DIR}/config/${TYPE}} folder doesn't have any YML files. Skipping...\n"
         fi
       else # Config subdirectory doesn't exist - skip
-        Verbose "The ${SRC_DIR}/config/${TYPE} folderrrr does not exist. Skipping...\n"
+        Verbose "INFO: The ${SRC_DIR}/config/${TYPE} folder does not exist. Skipping...\n"
         continue
       fi
     done
@@ -248,14 +257,14 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
         cat "${DIFFS}" >> "${ALL_DIFFS}"
         Verbose "DONE\n\n"
       else
-        [[ "${PATCH_MODE}" != 0 ]] && echo "##NO-PATCH## - $(Issue "${DIFFS} is empty - Nothing to add..." "${WCT_OK}" 1 )" >> "${ALL_DIFFS}"
+        echo "##NO-PATCH## - $(Issue "${DIFFS} is empty - Nothing to add..." "${WCT_OK}" 1 )" >> "${ALL_DIFFS}"
       fi
     fi
   else # Config directory doesn't exist - Skip project
     Issue "The ${SRC_DIR}/config folder does not exist. " "${WCT_WARNING}"
     if [[ $FIRST_PROJECT != "$LAST_PROJECT" ]]; then
       # ALL option logging
-      [[ "${PATCH_MODE}" != 0 ]] && echo "##NO-PATCH## - " "$(Issue "${SRC_DIR}/config folder does not exist. Skipping..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
+      echo "##NO-PATCH## - " "$(Issue "${SRC_DIR}/config folder does not exist. Skipping..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
       printf "Skipping...\n" && continue
     else
       printf "Closing.\n" && exit 1
@@ -283,14 +292,14 @@ if [[ -s "${OUTPUT_TOTAL}" ]]; then
   Verbose "Review complete.\n"
 else
   Issue "No changes in ${OUTPUT} to review. Skipping... and deleting all generated diff and command files." "${WCT_OK}"
-  [[ "${PATCH_MODE}" == 1 ]] && Verbose "Skipping Patch mode.\n" && PATCH_MODE=0
+  [[ "${PATCH_MODE}" == 1 ]] && Verbose "No patch to be made. Skipping...\n" && PATCH_MODE=0
   MANUAL_DIFF_REVIEW=0
 fi
 
 # Patch generation, if in "patch mode" (-p)
 if [[ "${PATCH_MODE}" == 1 ]]; then
   BarrierMajor 3
-  Verbose "** PATCH_MODE **\n Special patch file being made..."
+  Verbose "** PATCH_MODE **\n\n(Experimental) patch file being made..."
   cp "${OUTPUT_TOTAL}" "${OUTPUT_TOTAL}_APPLY.patch"
   # Swap files in diff for patching (patch -R reversal option not working, possibly due to different -pN levels)
   perl -0pi -e "s|(\-\-\-\s)(${USER_DIR_ROOT}\N+?)(\n)(\+\+\+\s)(${USER_DIR_ROOT}\N+?)(\n)|"'$1$5$3$4$2$6'"|g" "${OUTPUT_TOTAL}_APPLY.patch"
@@ -300,13 +309,13 @@ if [[ "${PATCH_MODE}" == 1 ]]; then
     # Clean out junk comments from .patch file
     sed -i -e 's|^##NO-PATCH##.*$||g' "${OUTPUT_TOTAL}_APPLY.patch" && sed -i '/^[[:space:]]*$/d' "${OUTPUT_TOTAL}_APPLY.patch" && sed -i '/^[[:blank:]]*$/ d' "${OUTPUT_TOTAL}_APPLY.patch"
   fi
-  printf "The following patch command may apply the changes for you:\n"
+  printf "The following patch command will apply ALL changes for you:\n"
   BarrierMinor 3
   # patch -p7 -Er ./ < PATCH-FILE # from correct directory
   # shellcheck disable=SC2153
   printf "patch -d %s -p%d -Er ./ < %s_APPLY.patch\n" "${OUTPUT_DIR}" "${#Nth[@]}" "${OUTPUT_TOTAL}"
   BarrierMinor 3
-  printf "WARNING: REVIEW THE PATCH FIRST! Don't apply the patch file without reviewing it first! You have been warned...\n"
+  printf "WARNING: REVIEW THE PATCH FIRST! Don't apply the patch file without reviewing it! * Don't find out by... * \n"
   BarrierMajor 3
 fi
 
@@ -317,19 +326,21 @@ if [[ ${#FILES_GENERATED[@]} -ge 1 ]]; then
   if [[ ${MANUAL_DIFF_REVIEW} == 1 ]]; then
     MESSAGE="The following files were kept for review (until the next time this script is run):"
     CLEANUP='echo'
+    [[ "${PATCH_MODE}" == 1 && -f "${OUTPUT_TOTAL}" ]] && FILES_GENERATED+=("${OUTPUT_TOTAL}_APPLY.patch")
   else
-    MESSAGE=$(printf "Deleting generated files...\n")
+    MESSAGE=$(printf "Deleting generated files")
+    [[ "${PATCH_MODE}" == 1 && -f "${OUTPUT_TOTAL}" ]] && MESSAGE="${MESSAGE} (except for ${ALL_DIFFS}_APPLY.patch)"
+    MESSAGE="${MESSAGE}..."
     CLEANUP='rm -v'
   fi
   for ((i=0; i <= ${#FILES_GENERATED[@]}; i++)); do
     [[ $i == 0 ]] && echo "${MESSAGE}"
-    if [[ -f "${FILES_GENERATED[$i]}" ]]; then
+    if [[ -f "${FILES_GENERATED[$i]}" && ( ${MANUAL_DIFF_REVIEW} == 1 || $_V == 1 ) ]]; then
       $(echo "${CLEANUP}") "${FILES_GENERATED[$i]}"
     fi
   done
 fi
 
-# DONE
 BarrierMajor 3
 echo "DONE."
 exit

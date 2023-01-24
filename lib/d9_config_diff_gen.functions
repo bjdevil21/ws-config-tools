@@ -3,7 +3,7 @@
 # HELPER FUNCTIONS
 
 # Help() - Output help docs
-function Help {
+Help() {
   # Display Help
   echo ""
   echo "Webspark 2 configuration file diff checker"
@@ -33,7 +33,7 @@ function Help {
 }
 # Is the project a valid project to check?
 # $1 (int) - Directory to be checked
-function ProjectVerify {
+ProjectVerify() {
   if [[ $1 =~ webspark+(-|_)module+(-|_).* || $1 =~ webspark+(-|_)theme+(-|_).* || $1 =~ webspark+(-|_)profile+(-|_).* ]]; then
     echo "true"
   else
@@ -42,10 +42,9 @@ function ProjectVerify {
 }
 # Prepare active configs directory
 # No input params
-function PrepConfigDir {
+PrepConfigDirs() {
   if [[ -d "${ABS_CONF_EXPORT_DIR}" ]]; then
-    find "${ABS_CONF_EXPORT_DIR}" -type f -not -name "*.yml" -exec rm {} \; # Delete non-YML files from config dir
-    YML_COUNT=$(find "${ABS_CONF_EXPORT_DIR}" -type f -name "*.yml" 2>/dev/null | wc -l)
+    YML_COUNT=$(GetYMLCount "${ABS_CONF_EXPORT_DIR}")
     if [[ ${YML_COUNT} != 0 ]]; then
       if [[ ${RERUN_EXPORT} == 1 ]]; then
         Verbose "Emptying %s directory..." "${ABS_CONF_EXPORT_DIR}"
@@ -53,21 +52,33 @@ function PrepConfigDir {
         Verbose "DONE.\n"
       fi
     else
-      RERUN_EXPORT=1 # Forcing rebuild to populate empty directory
+      RERUN_EXPORT=1 # Dir has no YML files
     fi
   else
     Verbose "\nNotice: %s does not exist. Creating directory..." "${ABS_CONF_EXPORT_DIR}"
     mkdir -p "${ABS_CONF_EXPORT_DIR}" || exit 1
     Verbose "DONE.\n"
-    if [[ "${RERUN_EXPORT}" == 0 ]]; then
-      RERUN_EXPORT=1 # Forcing rebuild to populate directory
+    RERUN_EXPORT=1 # Dir has no YML files
+  fi
+  if [[ -d "${COPY_EXPORT_START_DIR}" ]]; then
+    if [[ $(GetYMLCount "${COPY_EXPORT_START_DIR}" == 0) ]]; then
+      COPY_EXPORT_START=1
     fi
   fi
 }
+
+# GetYMLCount - Counts number of YML files in a directory
+# $1 (str) - Exported config directory to check
+# returns (int) file count
+GetYMLCount() {
+  # find "${1}" -type f -not -name "*.yml" -exec rm {} \; >/dev/null 2>&1 # Delete non-YML files from config dir
+  find "${1}" -type f -name "*.yml" 2>/dev/null | wc -l
+}
+
 # Resets config directory names/locations
 # $1 (int) - Assigned project number from assembled list
 # $2 (int) - If 1, output current project messaging
-function UpdateConfDirs {
+UpdateConfDirs() {
   if [[ $2 == 1 ]]; then
     printf "\n\n%s\n" "$(printf "## Project %d - %s ##" "$1" "${PROJECTS_AVAILABLE[$1]}")"
   fi

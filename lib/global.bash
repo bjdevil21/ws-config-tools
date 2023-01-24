@@ -58,6 +58,7 @@ IssueLevels() {
 }
 
 # Issue() - Output for various issues - info, debug, errors, etc
+# Try to use only for when things are "broken" or an unexpected event occurs.
 # $1 - (str) Message string to be output.
 #    To get the right "parameters" below, don't use printf parameters when calling this function;
 #    Include the variables directly in this string instead.
@@ -87,3 +88,18 @@ BarrierMinor() {
   echo '----------------------------'
   [[ $1 == 2 || $1 == 3 ]] && echo ""
 }
+
+# Timer for console to output a period per second
+# $1 (int) - N of seconds
+# $2 (str) - timer expired message. (Pass in " " for an empty message.)
+ConsoleTimer() {
+  local time=${1}
+  local end=$(( SECONDS + time ))
+  [[ $2 != "" ]] && local message="$2" || local message=" Time's up."
+  while [ $SECONDS -lt $end ]; do
+    printf '.'
+    sleep 1
+  done
+  printf "%s\n" "${message}"
+}
+#export -f ConsoleTimer
