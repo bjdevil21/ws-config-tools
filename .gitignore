@@ -1,4 +1,6 @@
 .idea
-_configs.diff
-*configs.diff
+_ALL_PROJ*
 user_settings/*
+_config_changes.diff
+_diff_commands.bash
+*APPLY.patch

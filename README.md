@@ -49,6 +49,7 @@ These flags can be combined (i.e. -kgV, -cr, etc.), with -z and -Z combining mos
 - -R - Same as -r, but with an additional 'start point' config export
   - This output will be used to find new YML files. Use this when starting a new ticket/task.
   - If you skip this step, plan on looking for new YML files your dev work may generate in the site's active config directory.
+- -p - Create an appliable .patch file in ./config for single projects (or the script root for ALL). USE WITH EXTREME CAUTION!
 - -c Skips Drush check if project is enabled (disabled projects bloat the config diff output)
 - -V Verbose output
 - -z Extra careful mode - same as -kgr
@@ -58,3 +59,4 @@ These flags can be combined (i.e. -kgV, -cr, etc.), with -z and -Z combining mos
 
 ## NOTES
 - This script currently checks all three project config directories (install, optional, schema). It does not check any other YML files (in the root directory, other /config directories, etc.) Future versions may check other YML files as well.
+- Cleaning up after the script: Running the script without the manual review option (-m) will automatically delete all of the script's generated files. One exception: patch files (-p). These files must be deleted manually.

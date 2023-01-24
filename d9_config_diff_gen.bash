@@ -15,7 +15,7 @@ source ./lib/d9_config_diff_gen.functions || exit 1
 . "${USER_DIR_ROOT}"/.bashrc  # Bash FYI - . is the same as source
 
 # OPTIONS
-while getopts "cghmrRvVzZ" option; do
+while getopts "cghmprRvVzZ" option; do
   case "${option}" in
   c) # Skip Drush check to see if project is enabled?
     PROJECT_CHECK=0;;
@@ -25,6 +25,8 @@ while getopts "cghmrRvVzZ" option; do
     Help;;
   m) # Keep generated files for manual review
     MANUAL_DIFF_REVIEW=1;;
+  p) # Generate diff that can be applied with 'patch < ${DIFFS}' (or ALL_DIFFS)
+    PATCH_MODE=1;;
   r) # Re-run Drush export
     RERUN_EXPORT=1;;
   R) # Re-run Drush export AND create alt copy for YML file comparison/contrast. (Run this before every task/ticket is started.)
@@ -58,14 +60,14 @@ declare -a PROJECTS_AVAILABLE=()
 declare -a FILES_GENERATED=()
 KEY=0
 MISSED_KEY=0
-for i in "${GH_PROJECTS_DIR}"/* ; do
+for i in "${ABS_PROJECTS_DIR}"/* ; do
   if [[ -d "$i" ]]; then
     PROJECT_DIR=$(basename "${i}")
     if [[ $(ProjectVerify "${PROJECT_DIR}") != false ]]; then
       KEY=$((KEY+1))
       if [[ $KEY == 1 ]]; then
         BarrierMajor
-        printf "Eligible project(s) found in %s: \n" "${GH_PROJECTS_DIR}"
+        printf "Eligible project(s) found in %s: \n" "${ABS_PROJECTS_DIR}"
         BarrierMajor
       fi
       PROJECTS_AVAILABLE[$KEY]=$PROJECT_DIR
@@ -100,7 +102,7 @@ PrepConfigDir
 # Drush rerun active configs export
 if [[ ${RERUN_EXPORT} == 1 ]]; then
   Verbose "Drush exporting the local dev site\'s config files into %s...\n" "${ABS_CONF_EXPORT_DIR}"
-  cd "${WEB_ROOT}" || exit 1
+  cd "${ABS_WEB_ROOT}" || exit 1
   drush cex --destination="${RERUN_EXPORT_DIR}"
   echo ""
   # Remove site-specific settings from exported active YMLs
@@ -153,18 +155,17 @@ fi
 
 cd "${ABS_CONF_EXPORT_DIR}" || exit 1
 
-#################################### BEGIN FOR LOOP
 # Process each project
 for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   UpdateConfDirs "${i}" 1
   BarrierMajor
   # ALL option logging
-  [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - Project ${i} of ${LAST_PROJECT}: ${SRC_DIR}" >> "${ALL_DIFFS}"
+  [[ $FIRST_PROJECT != "${LAST_PROJECT}" && "${PATCH_MODE}" != 0 ]] && echo "##NO-PATCH## - Project ${i} of ${LAST_PROJECT}: ${SRC_DIR}" >> "${ALL_DIFFS}"
 
   # Drush: Check if project is enabled
   if [[ "${PROJECT_CHECK}" == 1 ]]; then
     # Get project name from *.info.yml file
-    cd "${WEB_ROOT}" || exit 1
+    cd "${ABS_WEB_ROOT}" || exit 1
     PROJECT_YML_INFO=$(find "${ABS_SRC_DIR}"/ -maxdepth 1 -type f -printf "%f\n" | grep ".info.yml" | sed -r 's/.info.yml//')
     if [[ "${PROJECT_YML_INFO}" != '' ]]; then
       if [[ $(drush pm-list --pipe --status=enabled --type=module --no-core | grep "\(${PROJECT_YML_INFO}\)" | cut -f 3) ]]; then
@@ -173,7 +174,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
         Issue "${PROJECT_YML_INFO} is disabled. " "${WCT_WARNING}"
         # ALL option logging
         if [[ $FIRST_PROJECT != "$LAST_PROJECT" ]]; then
-          echo "##NO-PATCH## - " "$(Issue "${PROJECT_YML_INFO} is disabled. Skipping gratuitous diff output..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
+          [[ "${PATCH_MODE}" != 0 ]] && echo "##NO-PATCH## - " "$(Issue "${PROJECT_YML_INFO} is disabled. Skipping gratuitous diff output..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
           printf "Skipping...\n" && continue
         else
           printf "Closing.\n" && exit 1
@@ -219,7 +220,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
               NEW_YMLS_INSERTED=$((NEW_YMLS_INSERTED+1))
               NEW_YML_FILES=''
               # ALL option logging
-              [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - " "$(Issue "Added $(echo "${NEW_YML_FILES}" | wc -l) new YML files for review first." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
+              [[ $FIRST_PROJECT != "${LAST_PROJECT}" && "${PATCH_MODE}" != 0 ]] && echo "##NO-PATCH## - " "$(Issue "Added $(echo "${NEW_YML_FILES}" | wc -l) new YML files for review first." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
             fi
           fi
           # Adding original, existing YML files
@@ -247,32 +248,66 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
         cat "${DIFFS}" >> "${ALL_DIFFS}"
         Verbose "DONE\n\n"
       else
-        echo "##NO-PATCH## - $(Issue "${DIFFS} is empty - Nothing to add..." "${WCT_OK}" 1 )" >> "${ALL_DIFFS}"
+        [[ "${PATCH_MODE}" != 0 ]] && echo "##NO-PATCH## - $(Issue "${DIFFS} is empty - Nothing to add..." "${WCT_OK}" 1 )" >> "${ALL_DIFFS}"
       fi
     fi
   else # Config directory doesn't exist - Skip project
     Issue "The ${SRC_DIR}/config folder does not exist. " "${WCT_WARNING}"
-    if [[ $FIRST_PROJECT == "$LAST_PROJECT" ]]; then
-      printf "Closing.\n" && exit 1
-    else
+    if [[ $FIRST_PROJECT != "$LAST_PROJECT" ]]; then
       # ALL option logging
-      echo "##NO-PATCH## - " "$(Issue "${SRC_DIR}/config folder does not exist. Skipping..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
+      [[ "${PATCH_MODE}" != 0 ]] && echo "##NO-PATCH## - " "$(Issue "${SRC_DIR}/config folder does not exist. Skipping..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
       printf "Skipping...\n" && continue
+    else
+      printf "Closing.\n" && exit 1
     fi
   fi
 done
+
+# Settings INIT for output
 # ALL option logging
-[[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && FILES_GENERATED+=("${ALL_DIFFS}")
+if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
+  FILES_GENERATED+=("${ALL_DIFFS}")
+  OUTPUT="${ALL_DIFFS}"
+  OUTPUT_DIR="${SCRIPT_ROOT}"
+  OUTPUT_TOTAL="${OUTPUT}"
+else
+  OUTPUT="${DIFFS}"
+  OUTPUT_DIR="${ABS_SRC_DIR}/config/"
+  OUTPUT_TOTAL="${OUTPUT_DIR}${OUTPUT}"
+fi
 
 # Open diff (individual or ALL) file in TEXT_EDITOR for review
-[[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && OUTPUT="${ALL_DIFFS}" || OUTPUT="${DIFFS}"
-if [[ -s "${OUTPUT}" ]]; then
+if [[ -s "${OUTPUT_TOTAL}" ]]; then
   Verbose "\nOpening %s in %s...\n"  "${OUTPUT}" "${TEXT_EDITOR}"
-  "${TEXT_EDITOR}" "${OUTPUT}"
+  "${TEXT_EDITOR}" "${OUTPUT_TOTAL}"
   Verbose "Review complete.\n"
 else
-  Issue "No changes in ${OUTPUT} to review. Skipping and deleting all generated diff and command files." "${WCT_OK}"
+  Issue "No changes in ${OUTPUT} to review. Skipping... and deleting all generated diff and command files." "${WCT_OK}"
+  [[ "${PATCH_MODE}" == 1 ]] && Verbose "Skipping Patch mode.\n" && PATCH_MODE=0
   MANUAL_DIFF_REVIEW=0
+fi
+
+# Patch generation, if in "patch mode" (-p)
+if [[ "${PATCH_MODE}" == 1 ]]; then
+  BarrierMajor 3
+  Verbose "** PATCH_MODE **\n Special patch file being made..."
+  cp "${OUTPUT_TOTAL}" "${OUTPUT_TOTAL}_APPLY.patch"
+  # Swap files in diff for patching (patch -R reversal option not working, possibly due to different -pN levels)
+  perl -0pi -e "s|(\-\-\-\s)(${USER_DIR_ROOT}\N+?)(\n)(\+\+\+\s)(${USER_DIR_ROOT}\N+?)(\n)|"'$1$5$3$4$2$6'"|g" "${OUTPUT_TOTAL}_APPLY.patch"
+  Verbose "DONE\n"
+  IFS='/' read -r -a Nth <<< "${ABS_SRC_DIR}/config/"
+  if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
+    # Clean out junk comments from .patch file
+    sed -i -e 's|^##NO-PATCH##.*$||g' "${OUTPUT_TOTAL}_APPLY.patch" && sed -i '/^[[:space:]]*$/d' "${OUTPUT_TOTAL}_APPLY.patch" && sed -i '/^[[:blank:]]*$/ d' "${OUTPUT_TOTAL}_APPLY.patch"
+  fi
+  printf "The following patch command may apply the changes for you:\n"
+  BarrierMinor 3
+  # patch -p7 -Er ./ < PATCH-FILE # from correct directory
+  # shellcheck disable=SC2153
+  printf "patch -d %s -p%d -Er ./ < %s_APPLY.patch\n" "${OUTPUT_DIR}" "${#Nth[@]}" "${OUTPUT_TOTAL}"
+  BarrierMinor 3
+  printf "WARNING: REVIEW THE PATCH FIRST! Don't apply the patch file without reviewing it first! You have been warned...\n"
+  BarrierMajor 3
 fi
 
 ## Post-diff review - cleanup
@@ -280,7 +315,7 @@ fi
 BarrierMajor 3
 if [[ ${#FILES_GENERATED[@]} -ge 1 ]]; then
   if [[ ${MANUAL_DIFF_REVIEW} == 1 ]]; then
-    MESSAGE="The following files were kept for review:"
+    MESSAGE="The following files were kept for review (until the next time this script is run):"
     CLEANUP='echo'
   else
     MESSAGE=$(printf "Deleting generated files...\n")

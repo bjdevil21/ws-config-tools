@@ -21,7 +21,8 @@ function Help {
   echo "  -m - Keep diff and command files for manual review"
   echo "  -g - Interactively verify Git branch status for each project"
   printf "  -r - Re-run Drush export of active configs into ~/%s \n" "${CONF_EXPORT_DIR}"
-  echo " -R - -r plus creates/overwrites second 'starting point' export dir (to compare later for new YML files)"
+  echo "  -R - -r plus creates/overwrites second 'starting point' export dir (to compare later for new YML files)"
+  echo "  -p - Create an appliable .patch file in ./config for single projects (or the script root for ALL)"
   echo "  -c - Skip Drush check if project is enabled (by default, disabled projects bloat the config diff output)"
   echo "  -V - Verbose output"
   echo "  -z - Extra careful mode"
@@ -56,7 +57,7 @@ function PrepConfigDir {
     fi
   else
     Verbose "\nNotice: %s does not exist. Creating directory..." "${ABS_CONF_EXPORT_DIR}"
-    mkdir "${ABS_CONF_EXPORT_DIR}" || exit 1
+    mkdir -p "${ABS_CONF_EXPORT_DIR}" || exit 1
     Verbose "DONE.\n"
     if [[ "${RERUN_EXPORT}" == 0 ]]; then
       RERUN_EXPORT=1 # Forcing rebuild to populate directory
@@ -71,5 +72,5 @@ function UpdateConfDirs {
     printf "\n\n%s\n" "$(printf "## Project %d - %s ##" "$1" "${PROJECTS_AVAILABLE[$1]}")"
   fi
   SRC_DIR=${PROJECTS_AVAILABLE[$1]}
-  ABS_SRC_DIR=${GH_PROJECTS_DIR}${SRC_DIR}
+  ABS_SRC_DIR=${ABS_PROJECTS_DIR}${SRC_DIR}
 }
