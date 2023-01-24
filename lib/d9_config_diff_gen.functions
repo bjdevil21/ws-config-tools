@@ -34,7 +34,7 @@ function Help {
 # Is the project a valid project to check?
 # $1 (int) - Directory to be checked
 function ProjectVerify {
-  if [[ $1 =~ "webspark-module-".* || $1 =~ "webspark-theme-".* || $1 =~ "webspark-profile-".* ]]; then
+  if [[ $1 =~ webspark+(-|_)module+(-|_).* || $1 =~ webspark+(-|_)theme+(-|_).* || $1 =~ webspark+(-|_)profile+(-|_).* ]]; then
     echo "true"
   else
     echo "false"
