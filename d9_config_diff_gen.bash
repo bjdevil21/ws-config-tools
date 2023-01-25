@@ -63,7 +63,7 @@ MISSED_KEY=0
 for i in "${ABS_PROJECTS_DIR}"/* ; do
   if [[ -d "$i" ]]; then
     PROJECT_DIR=$(basename "${i}")
-    if [[ $(ProjectVerify "${PROJECT_DIR}") != false ]]; then
+    if [[ $(ProjectVerify "${PROJECT_DIR}") == 1 ]]; then
       KEY=$((KEY+1))
       if [[ $KEY == 1 ]]; then
         BarrierMajor
@@ -183,91 +183,80 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     fi
   fi
 
-  if [[ -d ${ABS_SRC_DIR}/config/ ]]; then
-    cd "${ABS_SRC_DIR}/config" || exit 1
-    # Project's Git branch information for review
-    BarrierMajor 1
-    GIT_BRANCH="$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')"
-    GIT_CURRENT_BRANCH=$(git branch --show-current) || exit 1 # Not a Git project
-    printf "%s\nCurrent Git branch: %s\n" "${SRC_DIR}" "${GIT_CURRENT_BRANCH}"
+  cd "${ABS_SRC_DIR}/config" || exit 1
+  # Project's Git branch information for review
+  BarrierMajor 1
+  GIT_BRANCH="$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')"
+  GIT_CURRENT_BRANCH=$(git branch --show-current) || exit 1 # Not a Git project
+  printf "%s\nCurrent Git branch: %s\n" "${SRC_DIR}" "${GIT_CURRENT_BRANCH}"
 
+  BarrierMinor
+
+  git fetch origin "${GIT_BRANCH}" --dry-run -v # Check default project branch for updates
+  # Optional Git confirmation step
+  if [[ $VERIFY_GIT_STATUS == 1 ]]; then
+    Verbose "\n* NOTICE: If the Git output above doesn't say \"[up to date]\", consider stopping to pull down and integrate the latest upstream commits. "
+    if [[ ${GIT_CURRENT_BRANCH} != "${GIT_BRANCH}" ]]; then
+      printf "\n* NOTICE: %s is not on the project's %s branch.\n" "${SRC_DIR}" "${GIT_BRANCH}"
+    fi
+    printf "\n-- Hit Enter/Return to continue (or Ctrl-C to Cancel if you want to stop... ** "
+    read -r
     BarrierMinor
+  fi
+  # Spawn per-project DIFFS file in ${SRC_DIR}/config/ directory
+  > "${DIFFS}"
+  echo ""
+  printf "Checking configs...\n"
+  FILES_GENERATED+=("${ABS_SRC_DIR}/config/${DIFFS}")
 
-    git fetch origin "${GIT_BRANCH}" --dry-run -v # Check default project branch for updates
-    # Optional Git confirmation step
-    if [[ $VERIFY_GIT_STATUS == 1 ]]; then
-      Verbose "\n* NOTICE: If the Git output above doesn't say \"[up to date]\", consider stopping to pull down and integrate the latest upstream commits. "
-      if [[ ${GIT_CURRENT_BRANCH} != "${GIT_BRANCH}" ]]; then
-        printf "\n* NOTICE: %s is not on the project's %s branch.\n" "${SRC_DIR}" "${GIT_BRANCH}"
-      fi
-      printf "\n-- Hit Enter/Return to continue (or Ctrl-C to Cancel if you want to stop... ** "
-      read -r
-      BarrierMinor
-    fi
-    # Spawn per-project DIFFS file in ${SRC_DIR}/config/ directory
-    > "${DIFFS}"
-    echo ""
-    printf "Checking configs...\n"
-    FILES_GENERATED+=("${ABS_SRC_DIR}/config/${DIFFS}")
-
-    for TYPE in "${!CONF_DIR_TYPES[@]}"; do
-      cd "${ABS_SRC_DIR}/config" || exit 1
-      if [[ -d ./${TYPE} ]]; then
-        if [[ $(GetYMLCount "./${TYPE}" gt 0) ]]; then
-          cd "${TYPE}" || exit 1
-          # Clear and rebuild COMMANDS_FILE for each subdirectory (TYPE)
-          > "${COMMANDS_FILE}"
-          FILES_GENERATED+=("${ABS_SRC_DIR}/config/${TYPE}/${COMMANDS_FILE}")
-          Verbose "\n"
-          Verbose "Comparing %s/config/%s and %s configs by:\n" "${SRC_DIR}" "${TYPE}" "${CONF_EXPORT_DIR}"
-          Verbose " - 1 of 2) Generating %s in %s/config/%s..." "${COMMANDS_FILE}" "${SRC_DIR}" "${TYPE}"
-          # Add newly generated YML files as diffs -- ONCE ONLY
-          if [[ $NEW_YMLS_INSERTED == 0 ]]; then
-            NEW_YML_FILES=$(LC_ALL=C diff -qr "${COPY_EXPORT_START_DIR}" "${ABS_CONF_EXPORT_DIR}" | grep -E "^Only in ${ABS_CONF_EXPORT_DIR}: .+\.yml$" | sed -e 's/^Only in .*:[[:space:]]*//g')
-            if [[ $NEW_YML_FILES != "" ]]; then
-              echo "${NEW_YML_FILES}" >> "${COMMANDS_FILE}"
-              NEW_YMLS_INSERTED=$((NEW_YMLS_INSERTED+1))
-              NEW_YML_FILES=''
-              # ALL option logging
-              [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - " "$(Issue "Added $(echo "${NEW_YML_FILES}" | wc -l) new YML files for review first." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
-            fi
-          fi
-          # Adding original, existing YML files
-          ls -a >> "${COMMANDS_FILE}"
-          # Generates new diffs between the module (<) and the current config output (>)
-          perl -pi -e 's/^.*(?<!\.yml)$//g' "${COMMANDS_FILE}" && sed -i '/^[[:space:]]*$/d' "${COMMANDS_FILE}" && sed -i '/^[[:blank:]]*$/ d' "${COMMANDS_FILE}"
-          perl -pi -e "s!^(.+?)\$!diff -${DIFF_FLAGS} ${ABS_SRC_DIR}/config/${TYPE}/\$1 ${ABS_CONF_EXPORT_DIR}/\$1 >> ../${DIFFS}!g" "${COMMANDS_FILE}"
-          Verbose "DONE\n"
-          Verbose " - 2 of 2) Appending new diffs to %s/config/%s..." "${SRC_DIR}" "${DIFFS}"
-          bash "${COMMANDS_FILE}"
-          Verbose "DONE\n"
-        else
-          Verbose "The ${SRC_DIR}/config/${TYPE}} folder doesn't have any YML files. Skipping...\n"
-        fi
-      else # Config subdirectory doesn't exist - skip
-        Verbose "INFO: The ${SRC_DIR}/config/${TYPE} folder does not exist. Skipping...\n"
-        continue
-      fi
-    done
+  for TYPE in "${!CONF_DIR_TYPES[@]}"; do
     cd "${ABS_SRC_DIR}/config" || exit 1
-    # ALL option logging
-    if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
-      if [[ -s "${DIFFS}" ]]; then # Are there diffs to add in any of the project?
-        Verbose " - Adding all project diff contents to %s..." "${ALL_DIFFS}"
-        cat "${DIFFS}" >> "${ALL_DIFFS}"
-        Verbose "DONE\n\n"
+    if [[ -d ./${TYPE} ]]; then
+      if [[ $(GetYMLCount "./${TYPE}" gt 0) ]]; then
+        cd "${TYPE}" || exit 1
+        # Clear and rebuild COMMANDS_FILE for each subdirectory (TYPE)
+        > "${COMMANDS_FILE}"
+        FILES_GENERATED+=("${ABS_SRC_DIR}/config/${TYPE}/${COMMANDS_FILE}")
+        Verbose "\n"
+        Verbose "Comparing %s/config/%s and %s configs by:\n" "${SRC_DIR}" "${TYPE}" "${CONF_EXPORT_DIR}"
+        Verbose " - 1 of 2) Generating %s in %s/config/%s..." "${COMMANDS_FILE}" "${SRC_DIR}" "${TYPE}"
+        # Add newly generated YML files as diffs -- ONCE ONLY
+        if [[ $NEW_YMLS_INSERTED == 0 ]]; then
+          NEW_YML_FILES=$(LC_ALL=C diff -qr "${COPY_EXPORT_START_DIR}" "${ABS_CONF_EXPORT_DIR}" | grep -E "^Only in ${ABS_CONF_EXPORT_DIR}: .+\.yml$" | sed -e 's/^Only in .*:[[:space:]]*//g')
+          if [[ $NEW_YML_FILES != "" ]]; then
+            echo "${NEW_YML_FILES}" >> "${COMMANDS_FILE}"
+            NEW_YMLS_INSERTED=$((NEW_YMLS_INSERTED+1))
+            NEW_YML_FILES=''
+            # ALL option logging
+            [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - " "$(Issue "Added $(echo "${NEW_YML_FILES}" | wc -l) new YML files for review first." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
+          fi
+        fi
+        # Adding original, existing YML files
+        ls -a >> "${COMMANDS_FILE}"
+        # Generates new diffs between the module (<) and the current config output (>)
+        perl -pi -e 's/^.*(?<!\.yml)$//g' "${COMMANDS_FILE}" && sed -i '/^[[:space:]]*$/d' "${COMMANDS_FILE}" && sed -i '/^[[:blank:]]*$/ d' "${COMMANDS_FILE}"
+        perl -pi -e "s!^(.+?)\$!diff -${DIFF_FLAGS} ${ABS_SRC_DIR}/config/${TYPE}/\$1 ${ABS_CONF_EXPORT_DIR}/\$1 >> ../${DIFFS}!g" "${COMMANDS_FILE}"
+        Verbose "DONE\n"
+        Verbose " - 2 of 2) Appending new diffs to %s/config/%s..." "${SRC_DIR}" "${DIFFS}"
+        bash "${COMMANDS_FILE}"
+        Verbose "DONE\n"
       else
-        echo "##NO-PATCH## - $(Issue "${DIFFS} is empty - Nothing to add..." "${WCT_OK}" 1 )" >> "${ALL_DIFFS}"
+        Verbose "The ${SRC_DIR}/config/${TYPE}} folder doesn't have any YML files. Skipping...\n"
       fi
+    else # Config subdirectory doesn't exist - skip
+      Verbose "INFO: The ${SRC_DIR}/config/${TYPE} folder does not exist. Skipping...\n"
+      continue
     fi
-  else # Config directory doesn't exist - Skip project
-    Issue "The ${SRC_DIR}/config folder does not exist. " "${WCT_WARNING}"
-    if [[ $FIRST_PROJECT != "$LAST_PROJECT" ]]; then
-      # ALL option logging
-      echo "##NO-PATCH## - " "$(Issue "${SRC_DIR}/config folder does not exist. Skipping..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
-      printf "Skipping...\n" && continue
+  done
+  cd "${ABS_SRC_DIR}/config" || exit 1
+  # ALL option logging
+  if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
+    if [[ -s "${DIFFS}" ]]; then # Are there diffs to add in any of the project?
+      Verbose " - Adding all project diff contents to %s..." "${ALL_DIFFS}"
+      cat "${DIFFS}" >> "${ALL_DIFFS}"
+      Verbose "DONE\n\n"
     else
-      printf "Closing.\n" && exit 1
+      echo "##NO-PATCH## - $(Issue "${DIFFS} is empty - Nothing to add..." "${WCT_OK}" 1 )" >> "${ALL_DIFFS}"
     fi
   fi
 done
@@ -343,4 +332,4 @@ fi
 
 BarrierMajor 3
 echo "DONE."
-exit
+exit 0

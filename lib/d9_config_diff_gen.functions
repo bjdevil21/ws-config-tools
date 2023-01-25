@@ -34,11 +34,10 @@ Help() {
 # Is the project a valid project to check?
 # $1 (int) - Directory to be checked
 ProjectVerify() {
-  if [[ $1 =~ webspark+(-|_)module+(-|_).* || $1 =~ webspark+(-|_)theme+(-|_).* || $1 =~ webspark+(-|_)profile+(-|_).* ]]; then
-    echo "true"
-  else
-    echo "false"
-  fi
+  local ProjectVerified=0
+  [[ ( $1 =~ webspark+(-|_)module+(-|_).* || $1 =~ webspark+(-|_)theme+(-|_).* || $1 =~ webspark+(-|_)profile+(-|_).* ) && \
+   -d "${ABS_PROJECTS_DIR}/$1/config" ]] && ProjectVerified=1
+  echo ${ProjectVerified}
 }
 # Prepare active configs directory
 # No input params
