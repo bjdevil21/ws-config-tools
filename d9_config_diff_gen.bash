@@ -257,9 +257,6 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   done
   cd "${ABS_SRC_CONF_DIR}" || exit 1
 
-  # TODO check DIFFS to see if empty here (instead of below) and delete now from directory and output list?
-  # Would mean associative array vs index array used here
-
   if [[ -s "${DIFFS}" ]]; then
     # ALL option logging
     if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
@@ -319,20 +316,20 @@ fi
 # Final _ALL patch cleanup
 if [[ "${PATCH_MODE}" == 1 ]]; then
   BarrierMajor 3
-# TODO output all patch commands at the end
-# Create for loop instead of single printf from PATCH_COMMANDS
+
   for ((i=0; i <= ${#PATCH_COMMANDS[@]}; i++)); do
-    [[ $i == 0 ]] && echo "The following patch command(s) can apply per-project changes:" && echo ""
+    [[ $i == 0 ]] && echo "The following patch command(s) can applied from each of their ./config directories, on a per-project changes:" && echo ""
     if [[ -f "${PATCHES_GENERATED[$i]}" ]]; then
       printf " * %s\n" "${PATCH_COMMANDS[$i]}"
     fi
   done
-
   if [[ $FIRST_PROJECT != "${LAST_PROJECT}" && -f "${OUTPUT_TOTAL}_APPLY.patch" ]]; then
     # Clean out junk comments from _ALL .patch file
     sed -i -e 's|^##NO-PATCH##.*$||g' "${OUTPUT_TOTAL}_APPLY.patch" && sed -i '/^[[:space:]]*$/d' "${OUTPUT_TOTAL}_APPLY.patch" && sed -i '/^[[:blank:]]*$/ d' "${OUTPUT_TOTAL}_APPLY.patch"
   fi
-  Verbose "\nWARNING: REVIEW ANY PATCHES BEFORE APPLYING! * Don't play around and find out. * \n"
+  Verbose "\nWARNING:\n"
+  Verbose " - REVIEW ANY PATCHES BEFORE APPLYING! * Don't play around and find out. * \n"
+  Verbose " - Any .patch files generated in the script root (when ALL is selected) cannot be applied.\n"
   BarrierMajor 3
 fi
 
