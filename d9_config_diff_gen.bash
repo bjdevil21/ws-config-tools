@@ -58,6 +58,9 @@ done
 # Get and select project directories
 declare -a PROJECTS_AVAILABLE=()
 declare -a FILES_GENERATED=()
+declare -a PATCH_COMMANDS=()
+declare -a PATCHES_GENERATED=()
+
 KEY=0
 MISSED_KEY=0
 for i in "${ABS_PROJECTS_DIR}"/* ; do
@@ -70,13 +73,16 @@ for i in "${ABS_PROJECTS_DIR}"/* ; do
         printf "Eligible project(s) found in %s: \n" "${ABS_PROJECTS_DIR}"
         BarrierMajor
       fi
-      PROJECTS_AVAILABLE[$KEY]=$PROJECT_DIR
+      PROJECTS_AVAILABLE[$KEY]="${PROJECT_DIR}"
       printf "%s) %s\n" ${KEY} "${PROJECT_DIR}"
     else
       MISSED_KEY=$((MISSED_KEY+1))
     fi
   fi
 done
+# No projects? Die now.
+[[ $KEY == 0 ]] && Issue "No projects found in ${ABS_PROJECTS_DIR}. Exiting" "${WCT_ERROR}"
+
 KEY=$((KEY+1)) ## Manually add ALL option
 PROJECTS_AVAILABLE[$KEY]="ALL"
 printf "%s) %s\n" ${KEY} "${PROJECTS_AVAILABLE[$KEY]}"
@@ -92,6 +98,7 @@ elif [[ $which_project == "${KEY}" ]]; then # ALL option
   LAST_PROJECT=$((KEY-1)) # Get 'em all
   # shellcheck disable=SC2153
   > "${ALL_DIFFS}"
+  [[ ${PATCH_MODE} == 1 ]] && > "${ALL_DIFFS}"_APPLY.patch
 else # Single project
   FIRST_PROJECT=${which_project}
   LAST_PROJECT="${FIRST_PROJECT}"
@@ -183,7 +190,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     fi
   fi
 
-  cd "${ABS_SRC_DIR}/config" || exit 1
+  cd "${ABS_SRC_CONF_DIR}" || exit 1
   # Project's Git branch information for review
   BarrierMajor 1
   GIT_BRANCH="$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')"
@@ -206,17 +213,17 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   # Spawn per-project DIFFS file in ${SRC_DIR}/config/ directory
   > "${DIFFS}"
   echo ""
-  printf "Checking configs...\n"
-  FILES_GENERATED+=("${ABS_SRC_DIR}/config/${DIFFS}")
+  printf "Checking configration files...\n"
+  FILES_GENERATED+=("${ABS_SRC_CONF_DIR}/${DIFFS}")
 
   for TYPE in "${!CONF_DIR_TYPES[@]}"; do
-    cd "${ABS_SRC_DIR}/config" || exit 1
+    cd "${ABS_SRC_CONF_DIR}" || exit 1
     if [[ -d ./${TYPE} ]]; then
       if [[ $(GetYMLCount "./${TYPE}" gt 0) ]]; then
         cd "${TYPE}" || exit 1
         # Clear and rebuild COMMANDS_FILE for each subdirectory (TYPE)
         > "${COMMANDS_FILE}"
-        FILES_GENERATED+=("${ABS_SRC_DIR}/config/${TYPE}/${COMMANDS_FILE}")
+        FILES_GENERATED+=("${ABS_SRC_CONF_DIR}/${TYPE}/${COMMANDS_FILE}")
         Verbose "\n"
         Verbose "Comparing %s/config/%s and %s configs by:\n" "${SRC_DIR}" "${TYPE}" "${CONF_EXPORT_DIR}"
         Verbose " - 1 of 2) Generating %s in %s/config/%s..." "${COMMANDS_FILE}" "${SRC_DIR}" "${TYPE}"
@@ -235,7 +242,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
         ls -a >> "${COMMANDS_FILE}"
         # Generates new diffs between the module (<) and the current config output (>)
         perl -pi -e 's/^.*(?<!\.yml)$//g' "${COMMANDS_FILE}" && sed -i '/^[[:space:]]*$/d' "${COMMANDS_FILE}" && sed -i '/^[[:blank:]]*$/ d' "${COMMANDS_FILE}"
-        perl -pi -e "s!^(.+?)\$!diff -${DIFF_FLAGS} ${ABS_SRC_DIR}/config/${TYPE}/\$1 ${ABS_CONF_EXPORT_DIR}/\$1 >> ../${DIFFS}!g" "${COMMANDS_FILE}"
+        perl -pi -e "s!^(.+?)\$!diff -${DIFF_FLAGS} ${ABS_SRC_CONF_DIR}/${TYPE}/\$1 ${ABS_CONF_EXPORT_DIR}/\$1 >> ../${DIFFS}!g" "${COMMANDS_FILE}"
         Verbose "DONE\n"
         Verbose " - 2 of 2) Appending new diffs to %s/config/%s..." "${SRC_DIR}" "${DIFFS}"
         bash "${COMMANDS_FILE}"
@@ -248,16 +255,42 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
       continue
     fi
   done
-  cd "${ABS_SRC_DIR}/config" || exit 1
-  # ALL option logging
-  if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
-    if [[ -s "${DIFFS}" ]]; then # Are there diffs to add in any of the project?
+  cd "${ABS_SRC_CONF_DIR}" || exit 1
+
+  # TODO check DIFFS to see if empty here (instead of below) and delete now from directory and output list?
+  # Would mean associative array vs index array used here
+
+  if [[ -s "${DIFFS}" ]]; then
+    # ALL option logging
+    if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
       Verbose " - Adding all project diff contents to %s..." "${ALL_DIFFS}"
       cat "${DIFFS}" >> "${ALL_DIFFS}"
       Verbose "DONE\n\n"
-    else
-      echo "##NO-PATCH## - $(Issue "${DIFFS} is empty - Nothing to add..." "${WCT_OK}" 1 )" >> "${ALL_DIFFS}"
     fi
+
+    ## PATCH MODE
+    if [[ "${PATCH_MODE}" == 1 ]]; then
+
+      Verbose "** PATCH_MODE **\n\n(Experimental) patch file for ${SRC_DIR} being made..."
+      cp "${OUTPUT_TOTAL}" "${OUTPUT_TOTAL}_APPLY.patch"
+      # Swap files in diff for patching (patch -R reversal option not working, possibly due to different -pN levels)
+      perl -0pi -e "s|(\-\-\-\s)(${USER_DIR_ROOT}\N+?)(\n)(\+\+\+\s)(${USER_DIR_ROOT}\N+?)(\n)|"'$1$5$3$4$2$6'"|g" "${OUTPUT_TOTAL}_APPLY.patch"
+      Verbose "DONE\n"
+
+      # Generate and store patch command
+      IFS='/' read -r -a Nth <<< "${ABS_SRC_CONF_DIR}/"
+      PATCHES_GENERATED+=("${ABS_SRC_CONF_DIR}/${DIFFS}")
+      PATCH_COMMANDS+=("$(printf "patch -d %s -p%d -Er ./ < %s_APPLY.patch\n" "${ABS_SRC_CONF_DIR}" "${#Nth[@]}" "${OUTPUT_TOTAL}")")
+
+      # ALL option logging TODO remove after other patch work is done
+      if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
+        cat "${OUTPUT_TOTAL}_APPLY.patch" >> "${ALL_DIFFS}_APPLY.patch"
+      fi
+    fi
+
+  else
+    # TODO Single project "is empty" response?
+   [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - $(Issue "${DIFFS} is empty - Nothing to add..." "${WCT_OK}" 1 )" >> "${ALL_DIFFS}"
   fi
 done
 
@@ -266,12 +299,10 @@ done
 if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
   FILES_GENERATED+=("${ALL_DIFFS}")
   OUTPUT="${ALL_DIFFS}"
-  OUTPUT_DIR="${SCRIPT_ROOT}"
   OUTPUT_TOTAL="${OUTPUT}"
 else
   OUTPUT="${DIFFS}"
-  OUTPUT_DIR="${ABS_SRC_DIR}/config/"
-  OUTPUT_TOTAL="${OUTPUT_DIR}${OUTPUT}"
+  OUTPUT_TOTAL="${ABS_SRC_CONF_DIR}/${DIFFS}"
 fi
 
 # Open diff (individual or ALL) file in TEXT_EDITOR for review
@@ -285,32 +316,29 @@ else
   MANUAL_DIFF_REVIEW=0
 fi
 
-# Patch generation, if in "patch mode" (-p)
+# Final _ALL patch cleanup
 if [[ "${PATCH_MODE}" == 1 ]]; then
   BarrierMajor 3
-  Verbose "** PATCH_MODE **\n\n(Experimental) patch file being made..."
-  cp "${OUTPUT_TOTAL}" "${OUTPUT_TOTAL}_APPLY.patch"
-  # Swap files in diff for patching (patch -R reversal option not working, possibly due to different -pN levels)
-  perl -0pi -e "s|(\-\-\-\s)(${USER_DIR_ROOT}\N+?)(\n)(\+\+\+\s)(${USER_DIR_ROOT}\N+?)(\n)|"'$1$5$3$4$2$6'"|g" "${OUTPUT_TOTAL}_APPLY.patch"
-  Verbose "DONE\n"
-  IFS='/' read -r -a Nth <<< "${ABS_SRC_DIR}/config/"
-  if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
-    # Clean out junk comments from .patch file
+# TODO output all patch commands at the end
+# Create for loop instead of single printf from PATCH_COMMANDS
+  for ((i=0; i <= ${#PATCH_COMMANDS[@]}; i++)); do
+    [[ $i == 0 ]] && echo "The following patch command(s) can apply per-project changes:" && echo ""
+    if [[ -f "${PATCHES_GENERATED[$i]}" ]]; then
+      printf " * %s\n" "${PATCH_COMMANDS[$i]}"
+    fi
+  done
+
+  if [[ $FIRST_PROJECT != "${LAST_PROJECT}" && -f "${OUTPUT_TOTAL}_APPLY.patch" ]]; then
+    # Clean out junk comments from _ALL .patch file
     sed -i -e 's|^##NO-PATCH##.*$||g' "${OUTPUT_TOTAL}_APPLY.patch" && sed -i '/^[[:space:]]*$/d' "${OUTPUT_TOTAL}_APPLY.patch" && sed -i '/^[[:blank:]]*$/ d' "${OUTPUT_TOTAL}_APPLY.patch"
   fi
-  printf "The following patch command will apply ALL changes for you:\n"
-  BarrierMinor 3
-  # patch -p7 -Er ./ < PATCH-FILE # from correct directory
-  # shellcheck disable=SC2153
-  printf "patch -d %s -p%d -Er ./ < %s_APPLY.patch\n" "${OUTPUT_DIR}" "${#Nth[@]}" "${OUTPUT_TOTAL}"
-  BarrierMinor 3
-  printf "WARNING: REVIEW THE PATCH FIRST! Don't apply the patch file without reviewing it! * Don't find out by... * \n"
+  Verbose "\nWARNING: REVIEW ANY PATCHES BEFORE APPLYING! * Don't play around and find out. * \n"
   BarrierMajor 3
 fi
 
 ## Post-diff review - cleanup
 ###############################
-BarrierMajor 3
+echo ""
 if [[ ${#FILES_GENERATED[@]} -ge 1 ]]; then
   if [[ ${MANUAL_DIFF_REVIEW} == 1 ]]; then
     MESSAGE="The following files were kept for review (until the next time this script is run):"
@@ -318,7 +346,7 @@ if [[ ${#FILES_GENERATED[@]} -ge 1 ]]; then
     [[ "${PATCH_MODE}" == 1 && -f "${OUTPUT_TOTAL}" ]] && FILES_GENERATED+=("${OUTPUT_TOTAL}_APPLY.patch")
   else
     MESSAGE=$(printf "Deleting generated files")
-    [[ "${PATCH_MODE}" == 1 && -f "${OUTPUT_TOTAL}" ]] && MESSAGE="${MESSAGE} (except for ${ALL_DIFFS}_APPLY.patch)"
+    [[ "${PATCH_MODE}" == 1 && -f "${OUTPUT_TOTAL}" ]] && MESSAGE="${MESSAGE} (except for ${OUTPUT}_APPLY.patch)"
     MESSAGE="${MESSAGE}..."
     CLEANUP='rm -v'
   fi
@@ -330,6 +358,6 @@ if [[ ${#FILES_GENERATED[@]} -ge 1 ]]; then
   done
 fi
 
-BarrierMajor 3
+
 echo "DONE."
 exit 0

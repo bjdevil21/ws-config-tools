@@ -81,6 +81,8 @@ UpdateConfDirs() {
   if [[ $2 == 1 ]]; then
     printf "\n\n%s\n" "$(printf "## Project %d - %s ##" "$1" "${PROJECTS_AVAILABLE[$1]}")"
   fi
-  SRC_DIR=${PROJECTS_AVAILABLE[$1]}
-  ABS_SRC_DIR=${ABS_PROJECTS_DIR}${SRC_DIR}
+  SRC_DIR="${PROJECTS_AVAILABLE[$1]}"
+  ABS_SRC_DIR="${ABS_PROJECTS_DIR}${SRC_DIR}"
+  ABS_SRC_CONF_DIR="${ABS_SRC_DIR}/config"
+  OUTPUT_TOTAL="${ABS_SRC_CONF_DIR}/${DIFFS}"
 }
