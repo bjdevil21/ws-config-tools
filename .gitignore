@@ -5,7 +5,7 @@ user_settings/*
 _ALL*
 _config_changes.diff
 _diff_commands.bash
-*APPLY.patch
+*.patch
 
 # PHPStorm
 .idea

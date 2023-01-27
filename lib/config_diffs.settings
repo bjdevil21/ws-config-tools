@@ -15,14 +15,14 @@ else
 fi
 
 COMMANDS_FILE=_diff_commands.bash
-DIFFS=_config_changes.diff
+DIFFS=_changes.diff
 ALL_DIFFS="${SCRIPT_ROOT}"/_ALL${DIFFS}
 declare -r -A CONF_DIR_TYPES=( [install]="install" [optional]="optional" [schema]="schema" )
 MANUAL_DIFF_REVIEW=0
 VERIFY_GIT_STATUS=0
 _V=0
 PATCH_MODE=0
-PATCH_SUFFIX="_APPLY.patch"
+PATCH_SUFFIX="_APPLICABLE.patch"
 RERUN_EXPORT=0
 COPY_EXPORT_START=0
 PROJECT_CHECK=1

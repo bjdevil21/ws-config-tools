@@ -56,6 +56,9 @@ while getopts "ghmpPrRSvVzZ" option; do
   esac
 done
 
+# Random tasks that don't need any project generation, etc. Usually exits script gracefully.
+NonDiffsTasks
+
 # EXEC
 # Get and select project directories
 declare -a PROJECTS_AVAILABLE=()
@@ -82,17 +85,9 @@ for i in "${ABS_PROJECTS_DIR}"/* ; do
     fi
   fi
 done
+
 # No projects? Die now.
 [[ $KEY == 0 ]] && Issue "No projects found in ${ABS_PROJECTS_DIR}. Exiting...\n" "${WCT_ERROR}" && exit 1
-# Just deleting patches? Run and exit
-if [[ $PATCH_MODE == -1 ]]; then
-  BarrierMajor 1
-  printf "Deleting any script-generated patch files (if they exist)...\n"
-  find "${ABS_PROJECTS_DIR}" -type f -name "*${PATCH_SUFFIX}" -exec rm -v {} \;
-  find "${SCRIPT_ROOT}" -type f -name "*${PATCH_SUFFIX}" -exec rm -v {} \;
-  printf "DONE. Closing.\n"
-  exit 0
-fi
 
 KEY=$((KEY+1)) ## Manually add ALL option
 PROJECTS_AVAILABLE[$KEY]="ALL"
@@ -215,7 +210,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     if [[ ${GIT_CURRENT_BRANCH} != "${GIT_BRANCH}" ]]; then
       printf "\n* NOTICE: %s is not on the project's %s branch.\n" "${SRC_DIR}" "${GIT_BRANCH}"
     fi
-    printf "\n-- Hit Enter/Return to continue (or Ctrl-C to Cancel if you want to stop... ** "
+    printf "\n-- Hit Enter/Return to continue (or Ctrl-C to Cancel if you want to stop)... ** "
     read -r
     BarrierMinor
   fi
@@ -237,7 +232,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
         Verbose "\n"
         Verbose "Comparing %s/config/%s and %s configs by:\n" "${SRC_DIR}" "${TYPE}" "${CONF_EXPORT_DIR}"
         Verbose " - 1 of 2) Generating %s in %s/config/%s..." "${COMMANDS_FILE}" "${SRC_DIR}" "${TYPE}"
-        # Add newly generated YML files as diffs -- ONCE ONLY
+        # Add newly generated YML files as diffs (runs only once)
         if [[ $NEW_YMLS_INSERTED == 0 ]]; then
           NEW_YML_FILES=$(LC_ALL=C diff -qr "${COPY_EXPORT_START_DIR}" "${ABS_CONF_EXPORT_DIR}" | grep -E "^Only in ${ABS_CONF_EXPORT_DIR}: .+\.yml$" | sed -e 's/^Only in .*:[[:space:]]*//g')
           if [[ $NEW_YML_FILES != "" ]]; then
@@ -248,7 +243,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
             [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - " "$(Issue "Added $(echo "${NEW_YML_FILES}" | wc -l) new YML files for review first." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
           fi
         fi
-        # Adding original, existing YML files
+        # Add existing but modified YML files
         ls -a >> "${COMMANDS_FILE}"
         # Generates new diffs between the module (<) and the current config output (>)
         perl -pi -e 's/^.*(?<!\.yml)$//g' "${COMMANDS_FILE}" && sed -i '/^[[:space:]]*$/d' "${COMMANDS_FILE}" && sed -i '/^[[:blank:]]*$/ d' "${COMMANDS_FILE}"

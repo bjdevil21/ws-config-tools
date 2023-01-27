@@ -24,7 +24,7 @@ Help() {
   echo "  -g - Interactively verify Git branch status for each project"
   printf "  -r - Re-run Drush export of active configs into ~/%s \n" "${CONF_EXPORT_DIR}"
   printf "  -R - Runs -r, then regenerates %s (do this ONCE before starting any new task/ticket)" "${COPY_EXPORT_START_DIR}"
-  echo "  -p - Generate an appliable .patch file in ./config for single projects"
+  echo "  -p - Generate a working .patch file in ./config for single projects"
   echo "  -P - Delete existing generated .patch files, then skip all other processing"
   echo "  -S - Skip Drush check if project is enabled (doing this while diffing disabled projects will bloat the diff file)"
   echo "  -V - Verbose output"
@@ -93,4 +93,17 @@ UpdateConfDirs() {
   ABS_SRC_DIR="${ABS_PROJECTS_DIR}${SRC_DIR}"
   ABS_SRC_CONF_DIR="${ABS_SRC_DIR}/config"
   OUTPUT_TOTAL="${ABS_SRC_CONF_DIR}/${DIFFS}"
+}
+
+# Various tasks that do not need any project generation, etc.
+NonDiffsTasks() {
+  # Just deleting patches? Run and exit
+  if [[ $PATCH_MODE == -1 ]]; then
+    BarrierMajor 1
+    printf "Deleting any script-generated patch files (if they exist)...\n"
+    find "${ABS_PROJECTS_DIR}" -type f -name "*${PATCH_SUFFIX}" -exec rm -v {} \;
+    find "${SCRIPT_ROOT}" -type f -name "*${PATCH_SUFFIX}" -exec rm -v {} \;
+    printf "DONE. Closing.\n"
+    exit 0
+  fi
 }
