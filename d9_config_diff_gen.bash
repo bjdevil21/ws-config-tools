@@ -15,23 +15,25 @@ source ./lib/d9_config_diff_gen.functions || exit 1
 . "${USER_DIR_ROOT}"/.bashrc  # Bash FYI - . is the same as source
 
 # OPTIONS
-while getopts "cghmprRvVzZ" option; do
+while getopts "ghmpPrRSvVzZ" option; do
   case "${option}" in
-  c) # Skip Drush check to see if project is enabled?
-    PROJECT_CHECK=0;;
   g) # Interactive Git branch verification
     VERIFY_GIT_STATUS=1;;
   h) # Outputs help content
     Help;;
   m) # Keep generated files for manual review
     MANUAL_DIFF_REVIEW=1;;
-  p) # Generate diff that can be applied with 'patch < ${DIFFS}' (or ALL_DIFFS)
+  p) # Generate patch files from diffs (use 'patch < $<<diffs-file>>
     PATCH_MODE=1;;
+  P) # Clean out all existing .patch files
+    PATCH_MODE=-1;;
   r) # Re-run Drush export
     RERUN_EXPORT=1;;
   R) # Re-run Drush export AND create alt copy for YML file comparison/contrast. (Run this before every task/ticket is started.)
     RERUN_EXPORT=1
     COPY_EXPORT_START=1;;
+  S) # Skip Drush check to see if project is enabled?
+    PROJECT_CHECK=0;;
   v) # Return script version
     echo "${VERSION}"
     exit 0;;
@@ -81,7 +83,16 @@ for i in "${ABS_PROJECTS_DIR}"/* ; do
   fi
 done
 # No projects? Die now.
-[[ $KEY == 0 ]] && Issue "No projects found in ${ABS_PROJECTS_DIR}. Exiting" "${WCT_ERROR}"
+[[ $KEY == 0 ]] && Issue "No projects found in ${ABS_PROJECTS_DIR}. Exiting...\n" "${WCT_ERROR}" && exit 1
+# Just deleting patches? Run and exit
+if [[ $PATCH_MODE == -1 ]]; then
+  BarrierMajor 1
+  printf "Deleting any script-generated patch files (if they exist)...\n"
+  find "${ABS_PROJECTS_DIR}" -type f -name "*${PATCH_SUFFIX}" -exec rm -v {} \;
+  find "${SCRIPT_ROOT}" -type f -name "*${PATCH_SUFFIX}" -exec rm -v {} \;
+  printf "DONE. Closing.\n"
+  exit 0
+fi
 
 KEY=$((KEY+1)) ## Manually add ALL option
 PROJECTS_AVAILABLE[$KEY]="ALL"
@@ -98,7 +109,7 @@ elif [[ $which_project == "${KEY}" ]]; then # ALL option
   LAST_PROJECT=$((KEY-1)) # Get 'em all
   # shellcheck disable=SC2153
   > "${ALL_DIFFS}"
-  [[ ${PATCH_MODE} == 1 ]] && > "${ALL_DIFFS}"_APPLY.patch
+  [[ ${PATCH_MODE} == 1 ]] && > "${ALL_DIFFS}${PATCH_SUFFIX}"
 else # Single project
   FIRST_PROJECT=${which_project}
   LAST_PROJECT="${FIRST_PROJECT}"
@@ -145,7 +156,7 @@ if [[ ${RERUN_EXPORT} == 1 ]]; then
       Verbose "check for new YML files created in the active_config directory\n"
       Verbose "and review the conf sync output in the Drupal UI.\n\n"
       printf "Copying %s over to %s..." "${ABS_CONF_EXPORT_DIR}" "${COPY_EXPORT_START_DIR}"
-      cp -pr "${ABS_CONF_EXPORT_DIR}" "${COPY_EXPORT_START_DIR}" || exit 1
+      cp -pr "${ABS_CONF_EXPORT_DIR}"/* "${COPY_EXPORT_START_DIR}"/ || exit 1
       printf "DONE.\n\n"
     fi
   fi
@@ -174,7 +185,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     # Get project name from *.info.yml file
     cd "${ABS_WEB_ROOT}" || exit 1
     PROJECT_YML_INFO=$(find "${ABS_SRC_DIR}"/ -maxdepth 1 -type f -printf "%f\n" | grep ".info.yml" | sed -r 's/.info.yml//')
-    if [[ "${PROJECT_YML_INFO}" != '' ]]; then
+    if [[ "${PROJECT_YML_INFO}" != '' ]]; then # Project exists
       if [[ $(drush pm-list --pipe --status=enabled --type=module --no-core | grep "\(${PROJECT_YML_INFO}\)" | cut -f 3) ]]; then
         Verbose "Drush check: %s is enabled.\n" "${PROJECT_YML_INFO}"
       else
@@ -189,16 +200,14 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
       fi
     fi
   fi
-
   cd "${ABS_SRC_CONF_DIR}" || exit 1
+
   # Project's Git branch information for review
   BarrierMajor 1
   GIT_BRANCH="$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')"
   GIT_CURRENT_BRANCH=$(git branch --show-current) || exit 1 # Not a Git project
   printf "%s\nCurrent Git branch: %s\n" "${SRC_DIR}" "${GIT_CURRENT_BRANCH}"
-
   BarrierMinor
-
   git fetch origin "${GIT_BRANCH}" --dry-run -v # Check default project branch for updates
   # Optional Git confirmation step
   if [[ $VERIFY_GIT_STATUS == 1 ]]; then
@@ -210,6 +219,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     read -r
     BarrierMinor
   fi
+
   # Spawn per-project DIFFS file in ${SRC_DIR}/config/ directory
   > "${DIFFS}"
   echo ""
@@ -269,19 +279,19 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     if [[ "${PATCH_MODE}" == 1 ]]; then
 
       Verbose "** PATCH_MODE **\n\n(Experimental) patch file for ${SRC_DIR} being made..."
-      cp "${OUTPUT_TOTAL}" "${OUTPUT_TOTAL}_APPLY.patch"
+      cp "${OUTPUT_TOTAL}" "${OUTPUT_TOTAL}${PATCH_SUFFIX}"
       # Swap files in diff for patching (patch -R reversal option not working, possibly due to different -pN levels)
-      perl -0pi -e "s|(\-\-\-\s)(${USER_DIR_ROOT}\N+?)(\n)(\+\+\+\s)(${USER_DIR_ROOT}\N+?)(\n)|"'$1$5$3$4$2$6'"|g" "${OUTPUT_TOTAL}_APPLY.patch"
+      perl -0pi -e "s|(\-\-\-\s)(${USER_DIR_ROOT}\N+?)(\n)(\+\+\+\s)(${USER_DIR_ROOT}\N+?)(\n)|"'$1$5$3$4$2$6'"|g" "${OUTPUT_TOTAL}${PATCH_SUFFIX}"
       Verbose "DONE\n"
 
       # Generate and store patch command
       IFS='/' read -r -a Nth <<< "${ABS_SRC_CONF_DIR}/"
       PATCHES_GENERATED+=("${ABS_SRC_CONF_DIR}/${DIFFS}")
-      PATCH_COMMANDS+=("$(printf "patch -d %s -p%d -Er ./ < %s_APPLY.patch\n" "${ABS_SRC_CONF_DIR}" "${#Nth[@]}" "${OUTPUT_TOTAL}")")
+      PATCH_COMMANDS+=("$(printf "patch -d %s -p%d -Er ./ < %s%s\n" "${ABS_SRC_CONF_DIR}" "${#Nth[@]}" "${OUTPUT_TOTAL}" "${PATCH_SUFFIX}")")
 
       # ALL option logging TODO remove after other patch work is done
       if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
-        cat "${OUTPUT_TOTAL}_APPLY.patch" >> "${ALL_DIFFS}_APPLY.patch"
+        cat "${OUTPUT_TOTAL}${PATCH_SUFFIX}" >> "${ALL_DIFFS}${PATCH_SUFFIX}"
       fi
     fi
 
@@ -323,9 +333,9 @@ if [[ "${PATCH_MODE}" == 1 ]]; then
       printf " * %s\n" "${PATCH_COMMANDS[$i]}"
     fi
   done
-  if [[ $FIRST_PROJECT != "${LAST_PROJECT}" && -f "${OUTPUT_TOTAL}_APPLY.patch" ]]; then
+  if [[ $FIRST_PROJECT != "${LAST_PROJECT}" && -f "${OUTPUT_TOTAL}${PATCH_SUFFIX}" ]]; then
     # Clean out junk comments from _ALL .patch file
-    sed -i -e 's|^##NO-PATCH##.*$||g' "${OUTPUT_TOTAL}_APPLY.patch" && sed -i '/^[[:space:]]*$/d' "${OUTPUT_TOTAL}_APPLY.patch" && sed -i '/^[[:blank:]]*$/ d' "${OUTPUT_TOTAL}_APPLY.patch"
+    sed -i -e 's|^##NO-PATCH##.*$||g' "${OUTPUT_TOTAL}${PATCH_SUFFIX}" && sed -i '/^[[:space:]]*$/d' "${OUTPUT_TOTAL}${PATCH_SUFFIX}" && sed -i '/^[[:blank:]]*$/ d' "${OUTPUT_TOTAL}${PATCH_SUFFIX}"
   fi
   Verbose "\nWARNING:\n"
   Verbose " - REVIEW ANY PATCHES BEFORE APPLYING! * Don't play around and find out. * \n"
@@ -340,10 +350,10 @@ if [[ ${#FILES_GENERATED[@]} -ge 1 ]]; then
   if [[ ${MANUAL_DIFF_REVIEW} == 1 ]]; then
     MESSAGE="The following files were kept for review (until the next time this script is run):"
     CLEANUP='echo'
-    [[ "${PATCH_MODE}" == 1 && -f "${OUTPUT_TOTAL}" ]] && FILES_GENERATED+=("${OUTPUT_TOTAL}_APPLY.patch")
+    [[ "${PATCH_MODE}" == 1 && -f "${OUTPUT_TOTAL}" ]] && FILES_GENERATED+=("${OUTPUT_TOTAL}${PATCH_SUFFIX}")
   else
     MESSAGE=$(printf "Deleting generated files")
-    [[ "${PATCH_MODE}" == 1 && -f "${OUTPUT_TOTAL}" ]] && MESSAGE="${MESSAGE} (except for ${OUTPUT}_APPLY.patch)"
+    [[ "${PATCH_MODE}" == 1 && -f "${OUTPUT_TOTAL}" ]] && MESSAGE="${MESSAGE} (except for ${OUTPUT}${PATCH_SUFFIX})"
     MESSAGE="${MESSAGE}..."
     CLEANUP='rm -v'
   fi
@@ -355,6 +365,6 @@ if [[ ${#FILES_GENERATED[@]} -ge 1 ]]; then
   done
 fi
 
-
+######### END
 echo "DONE."
 exit 0

@@ -19,17 +19,18 @@ Help() {
   echo " * This script currently only checks a project's three possible ./config directories (per Drupal standards)."
   echo "   It does not check any other project's YML files (in the root directory or elsewhere in the project."
   echo ""
-  echo "Flags (options):"
+  echo "Options:"
   echo "  -m - Keep diff and command files for manual review"
   echo "  -g - Interactively verify Git branch status for each project"
   printf "  -r - Re-run Drush export of active configs into ~/%s \n" "${CONF_EXPORT_DIR}"
-  echo "  -R - -r plus creates/overwrites second 'starting point' export dir (to compare later for new YML files)"
-  echo "  -p - Create an appliable .patch file (using patch, not git apply) in ./config for single projects"
-  echo "  -c - Skip Drush check if project is enabled (using this on disabled projects will bloat the diff output)"
+  printf "  -R - Runs -r, then regenerates %s (do this ONCE before starting any new task/ticket)" "${COPY_EXPORT_START_DIR}"
+  echo "  -p - Generate an appliable .patch file in ./config for single projects"
+  echo "  -P - Delete existing generated .patch files, then skip all other processing"
+  echo "  -S - Skip Drush check if project is enabled (doing this while diffing disabled projects will bloat the diff file)"
   echo "  -V - Verbose output"
-  echo "  -z - Extra careful mode (runs m, g, r)"
-  echo "  -Z - Extra careful mode (same as above, only verbosely"
-  echo "  -v - Returns version of script"
+  echo "  -z - Extra careful mode (same as '-mgr')"
+  echo "  -Z - Extra careful mode (Verbose)"
+  echo "  -v - Returns script version"
   echo "  -h - Returns this help message"
   exit 0
 }
@@ -65,6 +66,10 @@ PrepConfigDirs() {
     if [[ $(GetYMLCount "${COPY_EXPORT_START_DIR}" == 0) ]]; then
       COPY_EXPORT_START=1
     fi
+  else
+    Verbose "\nNotice: %s does not exist. Creating directory..." "${COPY_EXPORT_START_DIR}"
+    mkdir -p "${COPY_EXPORT_START_DIR}"
+    COPY_EXPORT_START=1
   fi
 }
 
@@ -72,7 +77,6 @@ PrepConfigDirs() {
 # $1 (str) - Exported config directory to check
 # returns (int) file count
 GetYMLCount() {
-  # find "${1}" -type f -not -name "*.yml" -exec rm {} \; >/dev/null 2>&1 # Delete non-YML files from config dir
   find "${1}" -type f -name "*.yml" 2>/dev/null | wc -l
 }
 
