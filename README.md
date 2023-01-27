@@ -14,29 +14,29 @@ This Bash script helps identify which YML files need to be added to Git commits 
   - The project directories must start with "webspark-(theme|profile|module)?-" or the script will not see them to be checked.
 
 #### Required script files
-- d9_config_diff_gen.bash
+- config_diffs.bash
 - etc
-  - d9_config_diff_gen.default.vars
+  - config_diffs.default.vars
 - lib
-  - global.bash
-  - d9_config_diff_gen.settings
-  - d9_config_diff_gen.functions
+  - _global.bash
+  - config_diffs.settings
+  - config_diffs.functions
 
 ##### Optional
 - user_settings
-  - d9_config_diff_gen.my.vars (copy of the default.vars file with your own settings)
+  - config_diffs.my.vars (copy of the default.vars file with your own settings)
 
 ### Setup
 
 1. Clone this repo down to a directory that is accessible by your local site's Drush install. (Ex. ~/Desktop/webspark-config-tools, etc.)
 2. Create a new directory that is SEPARATE FROM YOUR WS2 SITE'S current export config directory (defaults to ../config). This is where this script will export your local site's active configurations. (Ex. ~/Desktop/active_configs). It must be reachable by Drush with a relative directory path.
-3. Create a new "user_settings" directory (in the script's root dir) and copy the d9_config_diff_gen.default.vars file over as d9_config_diff_gen.vars.
-4. Set the five d9_config_diff_gen.vars variables (see the file's notes for help).
+3. Create a new "user_settings" directory (in the script's root dir) and copy the config_diffs.default.vars file over as config_diffs.vars.
+4. Set the five config_diffs.vars variables (see the file's notes for help).
 
 ## Usage
 
 1. Open this project's directory in a terminal (CLI).
-2. Run the main script - _*bash d9_config_diff_gen.bash*_. When prompted, select which project's config files to check (enter 1..N), and a diff file will be opened for review in your choice of text editor (see settings file).
+2. Run the main script - _*bash config_diffs.bash*_. When prompted, select which project's config files to check (enter 1..N), and a diff file will be opened for review in your choice of text editor (see settings file).
 3. Close the file when done reviewing. By default, when the diff file text editor is closed, the generated diff file (and command file that made it) are deleted.
 
 ### Options (flags)

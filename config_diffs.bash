@@ -7,11 +7,11 @@
 
 # SETUP
 # shellcheck disable=SC2188
-source ./lib/global.bash || exit 1
+source ./lib/_global.bash || exit 1
 BashVersionCheck 4 3
 UserRootDirCheck
-source ./lib/d9_config_diff_gen.settings || exit 1
-source ./lib/d9_config_diff_gen.functions || exit 1
+source ./lib/config_diffs.settings || exit 1
+source ./lib/config_diffs.functions || exit 1
 . "${USER_DIR_ROOT}"/.bashrc  # Bash FYI - . is the same as source
 
 # OPTIONS

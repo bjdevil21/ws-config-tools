@@ -6,10 +6,10 @@
 ###########################################
 
 SCRIPT_ROOT=$(pwd)
-if [[ -f "${SCRIPT_ROOT}"/user_settings/d9_config_diff_gen.my.vars ]]; then
-  source "${SCRIPT_ROOT}"/user_settings/d9_config_diff_gen.my.vars
-elif [[ -f "${SCRIPT_ROOT}"/etc/d9_config_diff_gen.default.vars ]]; then
-  source "${SCRIPT_ROOT}"/etc/d9_config_diff_gen.default.vars
+if [[ -f "${SCRIPT_ROOT}"/user_settings/config_diffs.my.vars ]]; then
+  source "${SCRIPT_ROOT}"/user_settings/config_diffs.my.vars
+elif [[ -f "${SCRIPT_ROOT}"/etc/config_diffs.default.vars ]]; then
+  source "${SCRIPT_ROOT}"/etc/config_diffs.default.vars
 else
   echo "ERROR: *.vars file cannot be found. Exiting." && exit 1
 fi
