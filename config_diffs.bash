@@ -110,67 +110,14 @@ else # Single project
   LAST_PROJECT="${FIRST_PROJECT}"
 fi
 
+# Conf directories
 PrepConfigDirs
-
-# Drush rerun active configs export
-if [[ ${RERUN_EXPORT} == 1 ]]; then
-  Verbose "Drush exporting the local dev site\'s config files into %s...\n" "${ABS_CONF_EXPORT_DIR}"
-  cd "${ABS_WEB_ROOT}" || exit 1
-  drush cex --destination="${RERUN_EXPORT_DIR}"
-  echo ""
-  # Remove site-specific settings from exported active YMLs
-  # https://www.drupal.org/docs/distributions/creating-distributions/how-to-write-a-drupal-installation-profile#s-configuration)
-  Verbose "Cleaning out default local site UUIDs, etc. from exported YMLs..."
-  find "${ABS_CONF_EXPORT_DIR}"/ -type f -exec sed -i -e '/^uuid: /d' {} \;
-  find "${ABS_CONF_EXPORT_DIR}"/ -type f -exec sed -i -e '/_core:/,+1d' {} \;
-  Verbose "DONE\n"
-  echo ""
-  if [[ ${COPY_EXPORT_START} == 1 ]]; then
-    if [[ -d "${COPY_EXPORT_START_DIR}" && $(GetYMLCount "${COPY_EXPORT_START_DIR}") != 0 ]]; then
-      BarrierMajor
-      printf "WARNING: %s already exists, and presumably has your configurations from before you started this task.\n" "${COPY_EXPORT_START_DIR}"
-      printf "Are you sure you want to overwrite it? (Enter Y to continue): "
-      read -r overwrite_start
-      if [[ "${overwrite_start}" == "Y" ]]; then
-        BarrierMajor
-        printf "\nOverwriting %s directory in 3 seconds " "${COPY_EXPORT_START_DIR}"
-        ConsoleTimer 3 " "
-        rm -rf "${COPY_EXPORT_START_DIR}" || exit 1
-        cp -pr "${ABS_CONF_EXPORT_DIR}" "${COPY_EXPORT_START_DIR}" || exit 1
-        printf "DONE.\n\n"
-        BarrierMajor
-      else
-        BarrierMinor
-        printf "NOTICE: Keeping older version of %s.\n" "${COPY_EXPORT_START_DIR}"
-        BarrierMinor
-      fi
-    else
-      Verbose "WARNING: No %s with YML files detected.\n" "${COPY_EXPORT_START_DIR}"
-      Verbose "Make sure to create this directory before work on a YML-altering\n"
-      Verbose "task was started. If that didn't happen, then be sure to double\n"
-      Verbose "check for new YML files created in the active_config directory\n"
-      Verbose "and review the conf sync output in the Drupal UI.\n\n"
-      printf "Copying %s over to %s..." "${ABS_CONF_EXPORT_DIR}" "${COPY_EXPORT_START_DIR}"
-      cp -pr "${ABS_CONF_EXPORT_DIR}"/* "${COPY_EXPORT_START_DIR}"/ || exit 1
-      printf "DONE.\n\n"
-    fi
-  fi
-else # Skip all exports
-  if [[ "${YML_COUNT}" == 0 ]]; then
-    Issue "No YML files exist in ${RERUN_EXPORT_DIR}.\nRe-run with an option that rebuilds the active configs with Drush. Closing." "${WCT_ERROR}"
-    exit 1
-  else
-    Verbose "\nINFO: %s YML files found in %s directory, so skipping drush export and cleanup (by default).\n" "${YML_COUNT}" "${CONF_EXPORT_DIR}"
-    # shellcheck disable=SC2046
-    Verbose " - YMLs last update: $(date -d @$(stat -c '%Y' .))\n"
-  fi
-fi
 
 cd "${ABS_CONF_EXPORT_DIR}" || exit 1
 
 # Process each project
 for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
-  UpdateConfDirs "${i}" 1
+  UpdateProjDirPaths "${i}" 1
   BarrierMajor
   # ALL option logging
   [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - Project ${i} of ${LAST_PROJECT}: ${SRC_DIR}" >> "${ALL_DIFFS}"

@@ -34,7 +34,8 @@ Help() {
   echo "  -h - Returns this help message"
   exit 0
 }
-# Is the project a valid project to check?
+
+# Is the project a valid Drupal project to check?
 # $1 (int) - Directory to be checked
 ProjectVerify() {
   local ProjectVerified=0
@@ -42,9 +43,10 @@ ProjectVerify() {
    -d "${ABS_PROJECTS_DIR}/$1/config" ]] && ProjectVerified=1
   echo ${ProjectVerified}
 }
-# Prepare active configs directory
-# No input params
+
+# Prepare active configs, start point configs directories
 PrepConfigDirs() {
+  # Active confs dir
   if [[ -d "${ABS_CONF_EXPORT_DIR}" ]]; then
     YML_COUNT=$(GetYMLCount "${ABS_CONF_EXPORT_DIR}")
     if [[ ${YML_COUNT} != 0 ]]; then
@@ -62,14 +64,65 @@ PrepConfigDirs() {
     Verbose "DONE.\n"
     RERUN_EXPORT=1 # Dir has no YML files
   fi
-  if [[ -d "${COPY_EXPORT_START_DIR}" ]]; then
-    local S_YAML
-    S_YAML=$(GetYMLCount "${COPY_EXPORT_START_DIR}")
-    [[ ${S_YAML} == 0 ]] && COPY_EXPORT_START=1 || COPY_EXPORT_START=0
-  else
+  # 'start point' confs dir
+  if [[ ! -d "${COPY_EXPORT_START_DIR}" ]]; then
     Verbose "\nNotice: %s does not exist. Creating directory..." "${COPY_EXPORT_START_DIR}"
     mkdir -p "${COPY_EXPORT_START_DIR}"
     COPY_EXPORT_START=1
+  fi
+
+  # Drush rerun active configs export
+  if [[ ${RERUN_EXPORT} == 1 ]]; then # RERUN_EXPORT=1
+    Verbose "Drush exporting the local dev site\'s config files into %s...\n" "${ABS_CONF_EXPORT_DIR}"
+    cd "${ABS_WEB_ROOT}" || exit 1
+    drush cex --destination="${RERUN_EXPORT_DIR}"
+    echo ""
+    # Remove site-specific settings from exported active YMLs
+    # https://www.drupal.org/docs/distributions/creating-distributions/how-to-write-a-drupal-installation-profile#s-configuration)
+    Verbose "Cleaning out default local site UUIDs, etc. from exported YMLs..."
+    find "${ABS_CONF_EXPORT_DIR}"/ -type f -exec sed -i -e '/^uuid: /d' {} \;
+    find "${ABS_CONF_EXPORT_DIR}"/ -type f -exec sed -i -e '/_core:/,+1d' {} \;
+    Verbose "DONE\n"
+    echo ""
+    if [[ ${COPY_EXPORT_START} == 1 ]]; then
+      if [[ $(GetYMLCount "${COPY_EXPORT_START_DIR}") != 0 ]]; then
+        BarrierMajor
+        printf "WARNING: %s already exists, and presumably has your configurations from before you started this task.\n" "${COPY_EXPORT_START_DIR}"
+        printf "Are you sure you want to overwrite it? (Enter Y to continue): "
+        read -r overwrite_start
+        if [[ "${overwrite_start}" == "Y" ]]; then
+          BarrierMajor
+          printf "\nOverwriting %s directory in 3 seconds " "${COPY_EXPORT_START_DIR}"
+          ConsoleTimer 3 " "
+          rm -rf "${COPY_EXPORT_START_DIR}" || exit 1
+          cp -pr "${ABS_CONF_EXPORT_DIR}" "${COPY_EXPORT_START_DIR}" || exit 1
+          printf "DONE.\n\n"
+          BarrierMajor
+        else
+          BarrierMinor
+          printf "NOTICE: Keeping older version of %s.\n" "${COPY_EXPORT_START_DIR}"
+          BarrierMinor
+        fi
+      else
+        Verbose "WARNING: No %s with YML files detected.\n" "${COPY_EXPORT_START_DIR}"
+        Verbose "Make sure to create this directory before work on a YML-altering\n"
+        Verbose "task was started. If that didn't happen, then be sure to double\n"
+        Verbose "check for new YML files created in the active_config directory\n"
+        Verbose "and review the conf sync output in the Drupal UI.\n\n"
+        printf "Copying %s over to %s..." "${ABS_CONF_EXPORT_DIR}" "${COPY_EXPORT_START_DIR}"
+        cp -pr "${ABS_CONF_EXPORT_DIR}"/* "${COPY_EXPORT_START_DIR}"/ || exit 1
+        printf "DONE.\n\n"
+      fi
+    fi
+  else # Skip any Drush exports, but check for YML files
+    if [[ "${YML_COUNT}" == 0 ]]; then
+      Issue "No YML files exist in ${RERUN_EXPORT_DIR}.\nRe-run with -r or -R to rebuild the active configs with Drush. Closing." "${WCT_ERROR}"
+      exit 1
+    else
+      Verbose "\nINFO: %s YML files found in %s directory, so skipping drush export and cleanup (by default).\n" "${YML_COUNT}" "${CONF_EXPORT_DIR}"
+      # shellcheck disable=SC2046
+      Verbose " - YMLs last update: $(date -d @$(stat -c '%Y' .))\n"
+    fi
   fi
 }
 
@@ -77,15 +130,15 @@ PrepConfigDirs() {
 # $1 (str) - Exported config directory to check
 # returns (int) file count
 GetYMLCount() {
-  local S_YAML_CNT
-  S_YAML_CNT=$(find "${1}" -type f -name "*.yml" 2>/dev/null | wc -l)
-  echo "${S_YAML_CNT}"
+  local L_YAML_CNT
+  L_YAML_CNT=$(find "${1}" -type f -name "*.yml" 2>/dev/null | wc -l)
+  echo "${L_YAML_CNT}"
 }
 
-# Resets config directory names/locations
+# Resets various project directory paths, conf diffs file for current project
 # $1 (int) - Assigned project number from assembled list
-# $2 (int) - If 1, output current project messaging
-UpdateConfDirs() {
+# $2 (int) - If 1, output current project messaging (defaults to no output)
+UpdateProjDirPaths() {
   if [[ $2 == 1 ]]; then
     printf "\n\n%s\n" "$(printf "## Project %d - %s ##" "$1" "${PROJECTS_AVAILABLE[$1]}")"
   fi
@@ -97,7 +150,7 @@ UpdateConfDirs() {
 
 # Various tasks that do not need any project generation, etc.
 NonDiffsTasks() {
-  # Just deleting patches? Run and exit
+  # Just deleting patches? Run and exit (-P option)
   if [[ $PATCH_MODE == -1 ]]; then
     BarrierMajor 1
     printf "Deleting any script-generated patch files (if they exist)...\n"
@@ -106,4 +159,5 @@ NonDiffsTasks() {
     printf "DONE. Closing.\n"
     exit 0
   fi
+
 }
