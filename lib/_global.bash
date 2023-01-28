@@ -9,6 +9,22 @@ WCT_DEBUG=4
 
 export WCT_DEBUG WCT_OK WCT_WARNING WCT_ERROR
 
+# BarrierMajor() - Outputs a simple, think barrier
+# No input params
+BarrierMajor() {
+  [[ $1 == 1 || $1 == 3 ]] && echo ""
+  echo '==================================='
+  [[ $1 == 2 || $1 == 3 ]] && echo ""
+}
+
+# BarrierMajor() - Outputs a simple, thin barrier
+# No input params
+BarrierMinor() {
+  [[ $1 == 2 || $1 == 3 ]] && echo ""
+  echo '----------------------------'
+  [[ $1 == 2 || $1 == 3 ]] && echo ""
+}
+
 # Check bash version for compatibility
 # $1 (int) - bash major version
 # $2 (int) - bash minor version
@@ -17,6 +33,67 @@ BashVersionCheck() {
     echo "ERROR: You need at least v4.3 to run this script. Check with 'bash --version'"
     exit 1
   fi
+}
+
+# Timer for console to output a period per second
+# $1 (int) - N of seconds
+# $2 (str) - timer expired message. (Pass in " " for an empty message.)
+ConsoleTimer() {
+  local time=${1}
+  local end=$(( SECONDS + time ))
+  if [[ $2 != "" ]]; then
+    local message="$2"
+  else
+    local message=" Time's up."
+  fi
+  while [ $SECONDS -lt $end ]; do
+    printf '.'
+    sleep 1
+  done
+  printf "%s\n" "${message}"
+}
+#export -f ConsoleTimer
+
+# Git reset to master branch + pull
+# Must be run in
+# $1 (str) - Sanitized, absolute path to directory
+GitMasterRemoteSync() {
+  cd "${1}" || exit 1
+  if [[ -d .git ]]; then
+    git checkout "$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')" && git pull || exit 1
+  else
+    echo "ERROR: Directory doesn't contain a Git repo. Exiting."
+    exit 1
+  fi
+}
+
+# Issue() - Output for various issues - info, debug, errors, etc
+# Try to use only for when things are "broken" or an unexpected event occurs.
+# $1 - (str) Message string to be output.
+#    To get the right "parameters" below, don't use printf parameters when calling this function;
+#    Include the variables directly in this string instead.
+# $2 - (str) input level (use the constants above) (defaults to IssueLevel case default - MSG)
+# $3 - (int) (optional) If == 1, hides the top and bottom barriers (defaults to showing them)
+Issue() {
+  [[ $3 != 1 ]] && BarrierMinor 0
+  local IssueLevel=$2
+  printf "%s" "$(IssueLevels "${IssueLevel}")"
+  #printf "%s" "$@"
+  printf "%s" "$1"
+  [[ $3 != 1 ]] && echo "" && BarrierMinor 0
+}
+
+# IssueLevels() - Defines text output when
+# $1 (int) - Type of message (see Issue()).
+# Note: Internal function for Issue(). Do not use.
+IssueLevels() {
+  case $1 in
+  4) echo "DEBUG: ";;
+  3) echo "INFO: ";;
+  2) echo "WARNING: ";;
+  1) echo "ERROR: ";;
+  *) echo "MSG: ";;
+  esac
 }
 
 # UserRootDirCheck() - Returns the script executing user's home directory, based on their OS (Linux or Mac - no Windows support).
@@ -43,67 +120,3 @@ Verbose() {
     printf "$@"
   fi
 }
-
-# IssueLevels() - Defines text output when
-# $1 (int) - Type of message (see Issue()).
-# Note: Internal function for Issue(). Do not use.
-IssueLevels() {
-  case $1 in
-  4) echo "DEBUG: ";;
-  3) echo "INFO: ";;
-  2) echo "WARNING: ";;
-  1) echo "ERROR: ";;
-  *) echo "MSG: ";;
-  esac
-}
-
-# Issue() - Output for various issues - info, debug, errors, etc
-# Try to use only for when things are "broken" or an unexpected event occurs.
-# $1 - (str) Message string to be output.
-#    To get the right "parameters" below, don't use printf parameters when calling this function;
-#    Include the variables directly in this string instead.
-# $2 - (str) input level (use the constants above) (defaults to IssueLevel case default - MSG)
-# $3 - (int) (optional) If == 1, hides the top and bottom barriers (defaults to showing them)
-Issue() {
-  [[ $3 != 1 ]] && BarrierMinor 0
-  local IssueLevel=$2
-  printf "%s" "$(IssueLevels "${IssueLevel}")"
-  #printf "%s" "$@"
-  printf "%s" "$1"
-  [[ $3 != 1 ]] && echo "" && BarrierMinor 0
-}
-
-# BarrierMajor() - Outputs a simple, think barrier
-# No input params
-BarrierMajor() {
-  [[ $1 == 1 || $1 == 3 ]] && echo ""
-  echo '==================================='
-  [[ $1 == 2 || $1 == 3 ]] && echo ""
-}
-
-# BarrierMajor() - Outputs a simple, thin barrier
-# No input params
-BarrierMinor() {
-  [[ $1 == 2 || $1 == 3 ]] && echo ""
-  echo '----------------------------'
-  [[ $1 == 2 || $1 == 3 ]] && echo ""
-}
-
-# Timer for console to output a period per second
-# $1 (int) - N of seconds
-# $2 (str) - timer expired message. (Pass in " " for an empty message.)
-ConsoleTimer() {
-  local time=${1}
-  local end=$(( SECONDS + time ))
-  if [[ $2 != "" ]]; then
-    local message="$2"
-  else
-    local message=" Time's up."
-  fi
-  while [ $SECONDS -lt $end ]; do
-    printf '.'
-    sleep 1
-  done
-  printf "%s\n" "${message}"
-}
-#export -f ConsoleTimer
