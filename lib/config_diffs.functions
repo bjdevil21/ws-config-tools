@@ -2,6 +2,8 @@
 
 # HELPER FUNCTIONS
 
+source ./lib/config_diffs.settings || exit 1
+
 # Help() - Output help docs
 Help() {
   # Display Help
@@ -45,6 +47,7 @@ ProjectVerify() {
 }
 
 # Prepare active configs, start point configs directories
+# No input params (global values referenced)
 PrepConfigDirs() {
   # Active confs dir
   if [[ -d "${ABS_CONF_EXPORT_DIR}" ]]; then
@@ -149,6 +152,7 @@ UpdateProjDirPaths() {
 }
 
 # Various tasks that do not need any project generation, etc.
+# No params (global variables referenced)
 NonDiffsTasks() {
   # Just deleting patches? Run and exit (-P option)
   if [[ $PATCH_MODE == -1 ]]; then
@@ -159,5 +163,25 @@ NonDiffsTasks() {
     printf "DONE. Closing.\n"
     exit 0
   fi
-
+  # Verify start_time data to be newer than the current Drupal install (needs to be rebuilt)
+  ## Get DB timestamp for node table
+  if [[ ${VERIFY_START_POINT} == 1 ]]; then
+    local CURR_DIR
+    CURR_DIR=$(pwd)
+    cd "${ABS_WEB_ROOT}" || exit 1
+    local DRUPAL_DB_INIT_DATE # MySQL creation date of config table (assuming it wasn't dropped and readded individually??)
+    DRUPAL_DB_INIT_DATE="$(drush sql:query "USE information_schema; SELECT UNIX_TIMESTAMP(CREATE_TIME) FROM information_schema.TABLES WHERE TABLE_SCHEMA = 'ws2' AND TABLE_NAME = 'config' ;")"
+    local START_POINT # Grab newest YML file
+    START_POINT=$(ls -At "${COPY_EXPORT_START_DIR}" | grep -E "^.+.yml$" | head -1 | xargs -I {} stat -c "%W" "${COPY_EXPORT_START_DIR}"/{})
+    if [[ $(echo "${START_POINT}") != "" && "${START_POINT}" > "${DRUPAL_DB_INIT_DATE}" ]]; then
+      Issue "${COPY_EXPORT_START_DIR}'s content is older than your Drupal installation date/time." "${WCT_WARNING}"
+      Verbose "Are you sure that you ran this script once with -R (or -Z) AFTER reinstalling Drupal, and the start point configs aren't from a previous Drupal install?\n"
+      BarrierMinor
+      printf "Hit enter/return to say 'I understand' and continue (or Ctrl-C to quit)..."
+      read -r
+    else
+      Verbose "OK: Verified that %s was likely populated since the last rebuilding of Drupal from scratch.\n" "${COPY_EXPORT_START_DIR}"
+    fi
+    cd "${CURR_DIR}" || exit 1
+  fi
 }

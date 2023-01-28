@@ -95,7 +95,11 @@ BarrierMinor() {
 ConsoleTimer() {
   local time=${1}
   local end=$(( SECONDS + time ))
-  [[ $2 != "" ]] && local message="$2" || local message=" Time's up."
+  if [[ $2 != "" ]]; then
+    local message="$2"
+  else
+    local message=" Time's up."
+  fi
   while [ $SECONDS -lt $end ]; do
     printf '.'
     sleep 1
