@@ -8,7 +8,7 @@ This Bash script helps identify which YML files need to be added to Git commits 
 
 #### Local Environment
 - macOS or Linux (no Windows support)
-- Bash >= v4.3 from the CLI
+- Bash >= v4.3+ from the CLI (macOS needs Bash to be updated - an online search will return multiple resources on doing this)
 - A working web dev environment that works with Webspark 2 (MAMP, LAMP, etc.)
 - A local directory with all of your local Git clones of any Webspark projects.
   - The project directories must start with "webspark-(theme|profile|module)?-" or the script will not see them to be checked.
@@ -37,14 +37,20 @@ This Bash script helps identify which YML files need to be added to Git commits 
 
 1. Open this project's directory in a terminal (CLI).
 2. Run the main script - _*bash config_diffs.bash*_. When prompted, select which project's config files to check (enter 1..N), and a diff file will be opened for review in your choice of text editor (see settings file).
-3. Close the file when done reviewing. By default, when the diff file text editor is closed, the generated diff file (and command file that made it) are deleted.
+3. Close the file when done reviewing.
+
+### Usage notes
+
+- By default, when the diff file text editor is closed, the generated diff file - and the "commands" file that made it - are deleted. Use -m to keep the files availble for further review.
+- Cleaning up after the script: Running the script without the manual review option (-m) will automatically delete all of the script's generated files (except patches).
+- Run -P to delete all .patch files in the ./config directory.
 
 ### Options (flags)
 
 Run the script with the -h option to get the list.
 
-The flags can be combined (i.e. -kgV, -cr, etc.), with -z and -Z combining most of the options.
+The options can be combined (i.e. -kgV, -cr, etc.).
 
 ## NOTES
-- This script currently checks all three project config directories (install, optional, schema). It does not check any other YML files (in the root directory, other /config directories, etc.) Future versions may check other YML files as well.
-- Cleaning up after the script: Running the script without the manual review option (-m) will automatically delete all of the script's generated files. One exception: patch files (-p). These files must be deleted manually.
+
+- This script currently only checks all three project config directories (install, optional, schema). It does not check any other YML files (in the root directory, other /config directories, etc.)

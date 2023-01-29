@@ -31,6 +31,7 @@ while getopts "ghmpPrRSvVzZ" option; do
     RERUN_EXPORT=1;;
   R) # Re-run Drush export AND create alt copy for YML file comparison/contrast. (Run this before every task/ticket is started.)
     RERUN_EXPORT=1
+    # shellcheck disable=SC2034
     COPY_EXPORT_START=1;;
   S) # Skip Drush check to see if project is enabled?
     PROJECT_CHECK=0;;
@@ -46,10 +47,12 @@ while getopts "ghmpPrRSvVzZ" option; do
     VERIFY_START_POINT=1;;
   Z) # Do everything loudly (except clear alt config dir *_start - needs -R)
     MANUAL_DIFF_REVIEW=1
+    # shellcheck disable=SC2034
     RERUN_EXPORT=1
     VERIFY_GIT_STATUS=1
     # shellcheck disable=SC2034
     VERIFY_START_POINT=1
+    # shellcheck disable=SC2034
     _V=1;;
   \?) # Default: Invalid option
     Issue "Invalid option. Try -h for help." "${WCT_ERROR}"
@@ -185,6 +188,17 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
         if [[ $NEW_YMLS_INSERTED == 0 ]]; then
           NEW_YML_FILES=$(LC_ALL=C diff -qr "${COPY_EXPORT_START_DIR}" "${ABS_CONF_EXPORT_DIR}" | grep -E "^Only in ${ABS_CONF_EXPORT_DIR}: .+\.yml$" | sed -e 's/^Only in .*:[[:space:]]*//g')
           if [[ $NEW_YML_FILES != "" ]]; then
+            if [[ $_V == 1 ]]; then
+              echo ""
+              BarrierMajor 3
+              echo "NOTE: The following new YML files have been detected and added to the top of the diff output:"
+              BarrierMinor
+              echo "${NEW_YML_FILES}"
+              BarrierMinor
+              echo "Hit Enter to continue:"
+              BarrierMajor 3
+              read -r
+            fi
             echo "${NEW_YML_FILES}" >> "${COMMANDS_FILE}"
             NEW_YMLS_INSERTED=$((NEW_YMLS_INSERTED+1))
             NEW_YML_FILES=''
@@ -303,7 +317,7 @@ if [[ ${#FILES_GENERATED[@]} -ge 1 ]]; then
   fi
   for ((i=0; i <= ${#FILES_GENERATED[@]}; i++)); do
     [[ $i == 0 ]] && echo "${MESSAGE}"
-    if [[ -f "${FILES_GENERATED[$i]}" && ( ${MANUAL_DIFF_REVIEW} == 1 || $_V == 1 ) ]]; then
+    if [[ -f "${FILES_GENERATED[$i]}" && ( ${MANUAL_DIFF_REVIEW} == 1 || "${CLEANUP}" == 'rm -v' ) ]]; then
       $(echo "${CLEANUP}") "${FILES_GENERATED[$i]}"
     fi
   done

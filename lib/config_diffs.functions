@@ -19,13 +19,13 @@ Help() {
   echo "   1) Configure some values before running it."
   echo "   2) Run the script once with the -R option before 1) using it the first time and 2) before starting a new task."
   echo " * This script currently only checks a project's three possible ./config directories (per Drupal standards)."
-  echo "   It does not check any other project's YML files (in the root directory or elsewhere in the project."
+  echo "   It does not check any other YML files in the project (root directory or elsewhere)."
   echo ""
   echo "Options:"
   echo "  -m - Keep diff and command files for manual review"
   echo "  -g - Interactively verify Git branch status for each project"
   printf "  -r - Re-run Drush export of active configs into ~/%s \n" "${CONF_EXPORT_DIR}"
-  printf "  -R - Runs -r, then regenerates %s (do this ONCE before starting any new task/ticket)" "${COPY_EXPORT_START_DIR}"
+  printf "  -R - Runs -r, then regenerates %s (do this ONCE before starting any new task/ticket)\n" "${COPY_EXPORT_START_DIR}"
   echo "  -p - Generate a working .patch file in ./config for single projects"
   echo "  -P - Delete existing generated .patch files, then skip all other processing"
   echo "  -S - Skip Drush check if project is enabled (doing this while diffing disabled projects will bloat the diff file)"
@@ -92,8 +92,8 @@ PrepConfigDirs() {
         BarrierMajor
         printf "WARNING: %s already exists, and presumably has your configurations from before you started this task.\n" "${COPY_EXPORT_START_DIR}"
         printf "Are you sure you want to overwrite it? (Enter Y to continue): "
-        read -r overwrite_start
-        if [[ "${overwrite_start}" == "Y" ]]; then
+        read -r OverwriteStart
+        if [[ "${OverwriteStart}" == "Y" ]]; then
           BarrierMajor
           printf "\nOverwriting %s directory in 3 seconds " "${COPY_EXPORT_START_DIR}"
           ConsoleTimer 3 " "
@@ -148,6 +148,7 @@ UpdateProjDirPaths() {
   SRC_DIR="${PROJECTS_AVAILABLE[$1]}"
   ABS_SRC_DIR="${ABS_PROJECTS_DIR}${SRC_DIR}"
   ABS_SRC_CONF_DIR="${ABS_SRC_DIR}/config"
+  # shellcheck disable=SC2034
   OUTPUT_TOTAL="${ABS_SRC_CONF_DIR}/${DIFFS}"
 }
 

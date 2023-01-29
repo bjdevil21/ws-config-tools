@@ -17,7 +17,7 @@ fi
 COMMANDS_FILE=_diff_commands.bash
 DIFFS=_changes.diff
 ALL_DIFFS="${SCRIPT_ROOT}"/_ALL${DIFFS}
-declare -r -A CONF_DIR_TYPES=( [install]="install" [optional]="optional" [schema]="schema" )
+declare -A CONF_DIR_TYPES=( [install]="install" [optional]="optional" [schema]="schema" )
 MANUAL_DIFF_REVIEW=0
 VERIFY_GIT_STATUS=0
 VERIFY_START_POINT=0
