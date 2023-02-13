@@ -174,15 +174,18 @@ NonDiffsTasks() {
     DRUPAL_DB_INIT_DATE="$(drush sql:query "USE information_schema; SELECT UNIX_TIMESTAMP(CREATE_TIME) FROM information_schema.TABLES WHERE TABLE_SCHEMA = 'ws2' AND TABLE_NAME = 'config' ;")"
     local START_POINT # Grab newest YML file
     START_POINT=$(ls -At "${COPY_EXPORT_START_DIR}" | grep -E "^.+.yml$" | head -1 | xargs -I {} stat -c "%W" "${COPY_EXPORT_START_DIR}"/{})
-    if [[ $(echo "${START_POINT}") != "" && "${START_POINT}" > "${DRUPAL_DB_INIT_DATE}" ]]; then
-      Issue "${COPY_EXPORT_START_DIR}'s content is older than your Drupal installation date/time." "${WCT_WARNING}"
-      Verbose "Are you sure that you ran this script once with -R (or -Z) AFTER reinstalling Drupal, and the start point configs aren't from a previous Drupal install?\n"
-      BarrierMinor
+    [[ $_V == 1 ]] && BarrierMinor
+    Verbose "Start configs: $(date -d @${START_POINT}) - $(TimeToAgo ${START_POINT})\n"
+    Verbose "Drupal spinup: $(date -d @${DRUPAL_DB_INIT_DATE}) - $(TimeToAgo ${DRUPAL_DB_INIT_DATE}) \n\n"
+    if [[ $(echo "${START_POINT}") != "" && $((START_POINT-DRUPAL_DB_INIT_DATE)) -le 0 ]]; then
+      Issue "${COPY_EXPORT_START_DIR}'s content is older than your Drupal installation date/time. Your configurations may not reflect your current site." "${WCT_WARNING}"
+      Verbose "Are you sure that you ran this script once with -R (or -Z) AFTER reinstalling Drupal, and the start point configs aren't from a previous Drupal install?\n\n"
       printf "Hit enter/return to say 'I understand' and continue (or Ctrl-C to quit)..."
       read -r
     else
-      Verbose "OK: Verified that %s was likely populated since the last rebuilding of Drupal from scratch.\n" "${COPY_EXPORT_START_DIR}"
+      Verbose "OK: %s was likely populated since the last rebuilding of Drupal.\n" "${COPY_EXPORT_START_DIR}"
     fi
+    [[ $_V == 1 ]] && BarrierMinor
     cd "${CURR_DIR}" || exit 1
   fi
 }

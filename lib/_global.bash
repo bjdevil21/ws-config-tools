@@ -96,6 +96,44 @@ IssueLevels() {
   esac
 }
 
+TimeToAgo() {
+  local SEC_PER_MINUTE=$((60))
+  local   SEC_PER_HOUR=$((60*60))
+  local    SEC_PER_DAY=$((60*60*24))
+  local  SEC_PER_MONTH=$((60*60*24*30))
+  local   SEC_PER_YEAR=$((60*60*24*365))
+
+  local last_unix="$1"
+  local now_unix="$(date +'%s')"
+  local delta_s=$(( now_unix - last_unix ))
+
+  if (( delta_s < SEC_PER_MINUTE )); then
+    echo $((delta_s))" seconds ago"
+    return
+  elif (( delta_s < SEC_PER_HOUR )); then
+    local calc_s=$(((delta_s) % SEC_PER_MINUTE))
+    echo $((delta_s / SEC_PER_MINUTE))" minutes "$((calc_s / 60))" seconds ago"
+    return
+  elif (( delta_s < SEC_PER_DAY)); then
+    local calc_m=$(((delta_s) % SEC_PER_HOUR))
+    echo $((delta_s / SEC_PER_HOUR))" hours "$((calc_m / SEC_PER_MINUTE))" minutes ago"
+    return
+  elif (( delta_s < SEC_PER_MONTH)); then
+    local calc_h=$((delta_s % SEC_PER_DAY))
+    echo $((delta_s / SEC_PER_DAY))" days "$((calc_h / SEC_PER_HOUR))" hours ago"
+    return
+  elif (( delta_s < SEC_PER_YEAR)); then
+    local calc_d=$((delta_s % SEC_PER_MONTH))
+    echo $((delta_s / SEC_PER_MONTH))" months "$((calc_d / SEC_PER_DAY))" days ago"
+    return
+  else
+    local calc_mon=$((delta_s % SEC_PER_YEAR))
+    echo $((delta_s / SEC_PER_YEAR))" years "$((calc_mon / SEC_PER_MONTH))" ago"
+    return
+  fi
+  return 1
+}
+
 # UserRootDirCheck() - Returns the script executing user's home directory, based on their OS (Linux or Mac - no Windows support).
 # No input params
 UserRootDirCheck() {
