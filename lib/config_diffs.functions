@@ -49,10 +49,12 @@ ProjectVerify() {
 # Prepare active configs, start point configs directories
 # No input params (global values referenced)
 PrepConfigDirs() {
-  # Active confs dir
+  # Active (EXPORTED) confs dir
   if [[ -d "${ABS_CONF_EXPORT_DIR}" ]]; then
     YML_COUNT=$(GetYMLCount "${ABS_CONF_EXPORT_DIR}")
     if [[ ${YML_COUNT} != 0 ]]; then
+      # check age here?
+      # CheckConfigAge "${ABS_CONF_EXPORT_DIR}"
       if [[ ${RERUN_EXPORT} == 1 ]]; then
         Verbose "Emptying %s directory..." "${ABS_CONF_EXPORT_DIR}"
         rm "${ABS_CONF_EXPORT_DIR}"/*
@@ -67,15 +69,20 @@ PrepConfigDirs() {
     Verbose "DONE.\n"
     RERUN_EXPORT=1 # Dir has no YML files
   fi
-  # 'start point' confs dir
+  # Start (EXPORTED) configs directory
   if [[ ! -d "${COPY_EXPORT_START_DIR}" ]]; then
     Verbose "\nNotice: %s does not exist. Creating directory..." "${COPY_EXPORT_START_DIR}"
     mkdir -p "${COPY_EXPORT_START_DIR}"
+    # Active configs can't be older than start configs... clear the directory
+    Verbose "Emptying active export directory %s to reset it to new start config directory build..." "${ABS_CONF_EXPORT_DIR}"
+    rm "${ABS_CONF_EXPORT_DIR}"/*
+    Verbose "DONE.\n"
+    RERUN_EXPORT=1
     COPY_EXPORT_START=1
   fi
 
   # Drush rerun active configs export
-  if [[ ${RERUN_EXPORT} == 1 ]]; then # RERUN_EXPORT=1
+  if [[ ${RERUN_EXPORT} == 1 ]]; then
     Verbose "Drush exporting the local dev site\'s config files into %s...\n" "${ABS_CONF_EXPORT_DIR}"
     cd "${ABS_WEB_ROOT}" || exit 1
     drush cex --destination="${RERUN_EXPORT_DIR}"
@@ -87,6 +94,7 @@ PrepConfigDirs() {
     find "${ABS_CONF_EXPORT_DIR}"/ -type f -exec sed -i -e '/_core:/,+1d' {} \;
     Verbose "DONE\n"
     echo ""
+    # Rebuild start configs directory
     if [[ ${COPY_EXPORT_START} == 1 ]]; then
       if [[ $(GetYMLCount "${COPY_EXPORT_START_DIR}") != 0 ]]; then
         BarrierMajor
@@ -164,28 +172,52 @@ NonDiffsTasks() {
     printf "DONE. Closing.\n"
     exit 0
   fi
+  # Get Drupal spinup date
+  local CURR_DIR
+  CURR_DIR=$(pwd)
+  cd "${ABS_WEB_ROOT}" || exit 1
+  DRUPAL_DB_INIT_DATE="$(drush sql:query "USE information_schema; SELECT UNIX_TIMESTAMP(CREATE_TIME) FROM information_schema.TABLES WHERE TABLE_SCHEMA = 'ws2' AND TABLE_NAME = 'config' ;")"
+  cd "${CURR_DIR}" || exit 1
+
+  CheckConfigAge
+
+}
+
+CheckConfigAge() {
   # Verify start_time data to be newer than the current Drupal install (needs to be rebuilt)
-  ## Get DB timestamp for node table
-  if [[ ${VERIFY_START_POINT} == 1 ]]; then
+#  if [[ ${CHECK_CONFIGS_VALID} == 1 ]]; then
     local CURR_DIR
     CURR_DIR=$(pwd)
     cd "${ABS_WEB_ROOT}" || exit 1
-    local DRUPAL_DB_INIT_DATE # MySQL creation date of config table (assuming it wasn't dropped and readded individually??)
-    DRUPAL_DB_INIT_DATE="$(drush sql:query "USE information_schema; SELECT UNIX_TIMESTAMP(CREATE_TIME) FROM information_schema.TABLES WHERE TABLE_SCHEMA = 'ws2' AND TABLE_NAME = 'config' ;")"
-    local START_POINT # Grab newest YML file
-    START_POINT=$(ls -At "${COPY_EXPORT_START_DIR}" | grep -E "^.+.yml$" | head -1 | xargs -I {} stat -c "%W" "${COPY_EXPORT_START_DIR}"/{})
+    START_CONFIGS=$(ls -At "${COPY_EXPORT_START_DIR}" | grep -E "^.+.yml$" | head -1 | xargs -I {} stat -c "%W" "${COPY_EXPORT_START_DIR}"/{})
+    ACTIVE_CONFIGS=$(ls -At "${ABS_CONF_EXPORT_DIR}" | grep -E "^.+.yml$" | head -1 | xargs -I {} stat -c "%W" "${ABS_CONF_EXPORT_DIR}"/{})
     [[ $_V == 1 ]] && BarrierMinor
-    Verbose "Start configs: $(date -d @${START_POINT}) - $(TimeToAgo ${START_POINT})\n"
-    Verbose "Drupal spinup: $(date -d @${DRUPAL_DB_INIT_DATE}) - $(TimeToAgo ${DRUPAL_DB_INIT_DATE}) \n\n"
-    if [[ $(echo "${START_POINT}") != "" && $((START_POINT-DRUPAL_DB_INIT_DATE)) -le 0 ]]; then
-      Issue "${COPY_EXPORT_START_DIR}'s content is older than your Drupal installation date/time. Your configurations may not reflect your current site." "${WCT_WARNING}"
-      Verbose "Are you sure that you ran this script once with -R (or -Z) AFTER reinstalling Drupal, and the start point configs aren't from a previous Drupal install?\n\n"
-      printf "Hit enter/return to say 'I understand' and continue (or Ctrl-C to quit)..."
-      read -r
+    Verbose "Drupal spinup: $(date -d @${DRUPAL_DB_INIT_DATE}) - $(TimeToAgo ${DRUPAL_DB_INIT_DATE}) \n"
+    Verbose "Start configs: $(date -d @${START_CONFIGS}) - $(TimeToAgo ${START_CONFIGS})\n"
+    Verbose "Active configs: $(date -d @${ACTIVE_CONFIGS}) - $(TimeToAgo ${ACTIVE_CONFIGS})\n\n"
+    if [[ $(echo "${START_CONFIGS}") != "" && $(echo "${ACTIVE_CONFIGS}") != "" ]]; then
+      if [[ $((START_CONFIGS-ACTIVE_CONFIGS)) -gt 0 ]]; then
+        Issue "The exported active configs in ${ABS_CONF_EXPORT_DIR} are older than the start configs in ${COPY_EXPORT_START_DIR}. Exiting..." "${WCT_ERROR}"
+        Verbose "Solution: Run with -R to rebuild all configs.\n"
+        exit 1
+      elif [[ $((START_CONFIGS-DRUPAL_DB_INIT_DATE)) -le 0 ]]; then
+        Issue "${COPY_EXPORT_START_DIR}'s YMLs are older than your Drupal installation timestamp and are likely invalid." "${WCT_WARNING}"
+        Verbose "Did you run this script once with -R (or -Z) AFTER reinstalling Drupal to start this ticket?\n\n"
+        printf "Hit enter/return to say 'I understand' and continue (or Ctrl-C to quit)..."
+        read -r
+      elif [[ $((ACTIVE_CONFIGS-DRUPAL_DB_INIT_DATE)) -le 0 ]]; then
+        Issue "${ABS_CONF_EXPORT_DIR}'s YMLs are older than your Drupal installation timestamp and are likely invalid." "${WCT_WARNING}"
+        Verbose "Did you run this script at least once with -r (or -Z) AFTER reinstalling Drupal to start this ticket?\n\n"
+        printf "Hit enter/return to say 'I understand' and continue (or Ctrl-C to quit)..."
+        read -r
+      else
+        Verbose "OK: Your configurations are (likely) populated from this Drupal install.\n"
+      fi
     else
-      Verbose "OK: %s was likely populated since the last rebuilding of Drupal.\n" "${COPY_EXPORT_START_DIR}"
+      Issue "The creation date of either the exported active configs (${ACTIVE_CONFIGS}) or start configs (${COPY_EXPORT_START_DIR}) cannot be found. Exiting..." "${WCT_ERROR}"
+      exit 1
     fi
     [[ $_V == 1 ]] && BarrierMinor
     cd "${CURR_DIR}" || exit 1
-  fi
+#  fi
 }

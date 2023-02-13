@@ -43,15 +43,12 @@ while getopts "ghmpPrRSvVzZ" option; do
   z) # Do everything (except clear alt config dir *_start - needs -R)
     MANUAL_DIFF_REVIEW=1
     RERUN_EXPORT=1
-    VERIFY_GIT_STATUS=1
-    VERIFY_START_POINT=1;;
+    VERIFY_GIT_STATUS=1;;
   Z) # Do everything loudly (except clear alt config dir *_start - needs -R)
     MANUAL_DIFF_REVIEW=1
     # shellcheck disable=SC2034
     RERUN_EXPORT=1
     VERIFY_GIT_STATUS=1
-    # shellcheck disable=SC2034
-    VERIFY_START_POINT=1
     # shellcheck disable=SC2034
     _V=1;;
   \?) # Default: Invalid option
