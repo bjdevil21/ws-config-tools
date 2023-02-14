@@ -54,6 +54,14 @@ ConsoleTimer() {
 }
 #export -f ConsoleTimer
 
+# Global pause/continue with Enter key
+# No params
+EnterToContinue() {
+  printf "\n-- Hit Enter/Return to continue (or Ctrl-C to Cancel and stop)... ** "
+  read -r
+  BarrierMinor
+}
+
 # Git reset to master branch + pull
 # Must be run in
 # $1 (str) - Sanitized, absolute path to directory
@@ -96,6 +104,9 @@ IssueLevels() {
   esac
 }
 
+# Converts UNIX timestamps to relative time with two time unit levels (X days Y hours ago, Y hours Z mins ago, etc.)
+# $1 (int) - UNIX timestamp to compare to now
+# returns (str) - "X mins/hours/days ago"
 TimeToAgo() {
   local SEC_PER_MINUTE=$((60))
   local   SEC_PER_HOUR=$((60*60))
@@ -112,7 +123,7 @@ TimeToAgo() {
     return
   elif (( delta_s < SEC_PER_HOUR )); then
     local calc_s=$(((delta_s) % SEC_PER_MINUTE))
-    echo $((delta_s / SEC_PER_MINUTE))" minutes "$((calc_s / 60))" seconds ago"
+    echo $((delta_s / SEC_PER_MINUTE))" minutes "$((calc_s))" seconds ago"
     return
   elif (( delta_s < SEC_PER_DAY)); then
     local calc_m=$(((delta_s) % SEC_PER_HOUR))
@@ -134,7 +145,8 @@ TimeToAgo() {
   return 1
 }
 
-# UserRootDirCheck() - Returns the script executing user's home directory, based on their OS (Linux or Mac - no Windows support).
+# UserRootDirCheck() - Returns the script executing user's home directory, based on their OS
+# (Linux or Mac - no Windows support).
 # No input params
 UserRootDirCheck() {
   if [[ "$OSTYPE" == "linux-gnu"* ]]; then
@@ -149,7 +161,8 @@ UserRootDirCheck() {
   export OS_ROOT USER_DIR_ROOT
 }
 
-# Verbose() - If -V is passed into the main script, this outputs text that isn't displayed by default. Functions as a shell of printf().
+# Verbose() - If -V is passed into the main script, this outputs text that isn't displayed by default.
+# Functions as a shell of printf().
 # $1 (str) - Message to be displayed
 # NOTE: Include line breaks (\n) in any string you pass in.
 Verbose() {

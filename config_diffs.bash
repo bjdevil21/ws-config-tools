@@ -152,16 +152,20 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   GIT_CURRENT_BRANCH=$(git branch --show-current) || exit 1 # Not a Git project
   printf "%s\nCurrent Git branch: %s\n" "${SRC_DIR}" "${GIT_CURRENT_BRANCH}"
   BarrierMinor
-  git fetch origin "${GIT_BRANCH}" --dry-run -v # Check default project branch for updates
+  # Check default project branch for updates
+  if [[ ${GIT_CURRENT_BRANCH} != "${GIT_BRANCH}" ]]; then
+    printf "NOTICE: %s is not on the project's %s branch for this comparison.\n" "${SRC_DIR}" "${GIT_BRANCH}"
+    [[ $VERIFY_GIT_STATUS == 1 ]] && EnterToContinue
+  fi
   # Optional Git confirmation step
-  if [[ $VERIFY_GIT_STATUS == 1 ]]; then
-    Verbose "\n* NOTICE: If the Git output above doesn't say \"[up to date]\", consider stopping to pull down and integrate the latest upstream commits. "
-    if [[ ${GIT_CURRENT_BRANCH} != "${GIT_BRANCH}" ]]; then
-      printf "\n* NOTICE: %s is not on the project's %s branch.\n" "${SRC_DIR}" "${GIT_BRANCH}"
-    fi
-    printf "\n-- Hit Enter/Return to continue (or Ctrl-C to Cancel if you want to stop)... ** "
-    read -r
-    BarrierMinor
+  GIT_MASTER_STATUS=$(git fetch origin "${GIT_BRANCH}" --dry-run -v 2>&1)
+  GIT_MATCH=$(echo "${GIT_MASTER_STATUS}" | grep -i -E "\[up.to.date\]\s+${GIT_BRANCH}\s+")
+  if [[ ${GIT_MATCH} =~ "up to date" ]]; then
+    printf "OK: Project's %s branch up to date with remote.\n" "${GIT_BRANCH}"
+  else
+    Issue "${GIT_BRANCH} isn't up to date with remote project. Pull down and merge ${GIT_BRANCH} updates ASAP." "${WCT_WARNING}"
+    echo "${GIT_MASTER_STATUS}"
+    [[ $VERIFY_GIT_STATUS == 1 ]] && EnterToContinue
   fi
 
   # Spawn per-project DIFFS file in ${SRC_DIR}/config/ directory
@@ -181,7 +185,8 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
         Verbose "\n"
         Verbose "Comparing %s/config/%s and %s configs by:\n" "${SRC_DIR}" "${TYPE}" "${CONF_EXPORT_DIR}"
         Verbose " - 1 of 2) Generating %s in %s/config/%s..." "${COMMANDS_FILE}" "${SRC_DIR}" "${TYPE}"
-        # Add newly generated YML files as diffs (runs only once)
+
+        ## Catch-all 1 of 2) Add newly generated YML files to a project as diffs (runs only once)
         if [[ $NEW_YMLS_INSERTED == 0 ]]; then
           NEW_YML_FILES=$(LC_ALL=C diff -qr "${COPY_EXPORT_START_DIR}" "${ABS_CONF_EXPORT_DIR}" | grep -E "^Only in ${ABS_CONF_EXPORT_DIR}: .+\.yml$" | sed -e 's/^Only in .*:[[:space:]]*//g')
           if [[ $NEW_YML_FILES != "" ]]; then
@@ -191,16 +196,16 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
               echo "NOTE: The following new YML files have been detected and added to the top of the diff output:"
               BarrierMinor
               echo "${NEW_YML_FILES}"
-              BarrierMinor
-              echo "Hit Enter to continue:"
+              EnterToContinue
               BarrierMajor 3
-              read -r
             fi
-            echo "${NEW_YML_FILES}" >> "${COMMANDS_FILE}"
+            cat "${NEW_YML_FILES}" >> "${COMMANDS_FILE}"
             NEW_YMLS_INSERTED=$((NEW_YMLS_INSERTED+1))
             NEW_YML_FILES=''
             # ALL option logging
             [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - " "$(Issue "Added $(echo "${NEW_YML_FILES}" | wc -l) new YML files for review first." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
+          else
+            Verbose "No new YML files detected."
           fi
         fi
         # Add existing but modified YML files
