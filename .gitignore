@@ -3,8 +3,9 @@ user_settings/*
 
 # Temp files
 _ALL*
-_config_changes.diff
-_diff_commands.bash
+_*changes.diff
+_diff_commands*bash
+*_ymls.tmp
 *.patch
 
 # PHPStorm

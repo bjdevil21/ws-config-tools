@@ -11,15 +11,15 @@ export WCT_DEBUG WCT_OK WCT_WARNING WCT_ERROR
 
 # BarrierMajor() - Outputs a simple, think barrier
 # No input params
-BarrierMajor() {
+function BarrierMajor() {
   [[ $1 == 1 || $1 == 3 ]] && echo ""
   echo '==================================='
   [[ $1 == 2 || $1 == 3 ]] && echo ""
 }
 
-# BarrierMajor() - Outputs a simple, thin barrier
+# BarrierMinor() - Outputs a simple, thin barrier
 # No input params
-BarrierMinor() {
+function BarrierMinor() {
   [[ $1 == 2 || $1 == 3 ]] && echo ""
   echo '----------------------------'
   [[ $1 == 2 || $1 == 3 ]] && echo ""
@@ -28,7 +28,7 @@ BarrierMinor() {
 # Check bash version for compatibility
 # $1 (int) - bash major version
 # $2 (int) - bash minor version
-BashVersionCheck() {
+function BashVersionCheck() {
   if ! [[ BASH_VERSINFO[0] -gt $1 || BASH_VERSINFO[0] -eq $1 && BASH_VERSINFO[1] -ge $2 ]]; then
     echo "ERROR: You need at least v4.3 to run this script. Check with 'bash --version'"
     exit 1
@@ -38,7 +38,7 @@ BashVersionCheck() {
 # Timer for console to output a period per second
 # $1 (int) - N of seconds
 # $2 (str) - timer expired message. (Pass in " " for an empty message.)
-ConsoleTimer() {
+function ConsoleTimer() {
   local time=${1}
   local end=$(( SECONDS + time ))
   if [[ $2 != "" ]]; then
@@ -56,7 +56,7 @@ ConsoleTimer() {
 
 # Global pause/continue with Enter key
 # No params
-EnterToContinue() {
+function ConfirmToContinue() {
   printf "\n-- Hit Enter/Return to continue (or Ctrl-C to Cancel and stop)... ** "
   read -r
   BarrierMinor
@@ -65,7 +65,7 @@ EnterToContinue() {
 # Git reset to master branch + pull
 # Must be run in
 # $1 (str) - Sanitized, absolute path to directory
-GitMasterRemoteSync() {
+function GitMasterRemoteSync() {
   cd "${1}" || exit 1
   if [[ -d .git ]]; then
     git checkout "$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')" && git pull || exit 1
@@ -82,7 +82,7 @@ GitMasterRemoteSync() {
 #    Include the variables directly in this string instead.
 # $2 - (str) input level (use the constants above) (defaults to IssueLevel case default - MSG)
 # $3 - (int) (optional) If == 1, hides the top and bottom barriers (defaults to showing them)
-Issue() {
+function Issue() {
   [[ $3 != 1 ]] && BarrierMinor 0
   local IssueLevel=$2
   printf "%s" "$(IssueLevels "${IssueLevel}")"
@@ -94,7 +94,7 @@ Issue() {
 # IssueLevels() - Defines text output when
 # $1 (int) - Type of message (see Issue()).
 # Note: Internal function for Issue(). Do not use.
-IssueLevels() {
+function IssueLevels() {
   case $1 in
   4) echo "DEBUG: ";;
   3) echo "INFO: ";;
@@ -107,7 +107,7 @@ IssueLevels() {
 # Converts UNIX timestamps to relative time with two time unit levels (X days Y hours ago, Y hours Z mins ago, etc.)
 # $1 (int) - UNIX timestamp to compare to now
 # returns (str) - "X mins/hours/days ago"
-TimeToAgo() {
+function TimeToAgo() {
   local SEC_PER_MINUTE=$((60))
   local   SEC_PER_HOUR=$((60*60))
   local    SEC_PER_DAY=$((60*60*24))
@@ -148,7 +148,7 @@ TimeToAgo() {
 # UserRootDirCheck() - Returns the script executing user's home directory, based on their OS
 # (Linux or Mac - no Windows support).
 # No input params
-UserRootDirCheck() {
+function UserRootDirCheck() {
   if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     OS_ROOT="/home"
   elif [[ "$OSTYPE" == "darwin"* ]]; then
@@ -165,7 +165,7 @@ UserRootDirCheck() {
 # Functions as a shell of printf().
 # $1 (str) - Message to be displayed
 # NOTE: Include line breaks (\n) in any string you pass in.
-Verbose() {
+function Verbose() {
   if [[ $_V -eq 1 ]]; then
     # shellcheck disable=SC2059
     printf "$@"

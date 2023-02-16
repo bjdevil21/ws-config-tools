@@ -5,7 +5,7 @@
 source ./lib/config_diffs.settings || exit 1
 
 # Help() - Output help docs
-Help() {
+function Help() {
   # Display Help
   echo ""
   echo "Webspark 2 configuration file diff checker"
@@ -39,7 +39,7 @@ Help() {
 
 # Is the project a valid Drupal project to check?
 # $1 (int) - Directory to be checked
-ProjectVerify() {
+function ProjectVerify() {
   local ProjectVerified=0
   [[ ( $1 =~ webspark+(-|_)module+(-|_).* || $1 =~ webspark+(-|_)theme+(-|_).* || $1 =~ webspark+(-|_)profile+(-|_).* ) && \
    -d "${ABS_PROJECTS_DIR}/$1/config" ]] && ProjectVerified=1
@@ -47,11 +47,10 @@ ProjectVerify() {
 }
 
 # Prepare active configs, start point configs directories
-# No input params (global values referenced)
-PrepConfigDirs() {
+function PrepConfigDirs() {
   ## Active (EXPORTED) confs dir
   if [[ -d "${ABS_CONF_EXPORT_DIR}" ]]; then
-    YML_COUNT=$(GetYMLCount "${ABS_CONF_EXPORT_DIR}")
+    YML_COUNT=$(GetYMLData "${ABS_CONF_EXPORT_DIR}" 1)
     if [[ ${YML_COUNT} != 0 ]]; then
       # check active confs age
       CheckConfigAge "${ABS_CONF_EXPORT_DIR}" "Active"
@@ -98,9 +97,9 @@ PrepConfigDirs() {
     Verbose "DONE\n"
     echo ""
 
-    ## Rebuild start configs directory
+    ## Rebuild start configs directory (OPTIONAL)
     if [[ ${COPY_EXPORT_START} == 1 ]]; then
-      if [[ $(GetYMLCount "${COPY_EXPORT_START_DIR}") != 0 ]]; then
+      if [[ $(GetYMLData "${COPY_EXPORT_START_DIR}" 1) != 0 ]]; then
         # Check Start configs age
         CheckConfigAge "${COPY_EXPORT_START_DIR}" "Start"
         BarrierMajor
@@ -143,32 +142,36 @@ PrepConfigDirs() {
   fi
 }
 
-# GetYMLCount - Counts number of YML files in a directory
+# GetYMLData - Gets data (list or count) of YML files in a directory
 # $1 (str) - Exported config directory to check
+# $2 (int) - 0 or 1; If 1, return count (instead of YML list)
 # returns (int) file count
-GetYMLCount() {
-  local L_YAML_CNT
-  L_YAML_CNT=$(find "${1}" -type f -name "*.yml" 2>/dev/null | wc -l)
-  echo "${L_YAML_CNT}"
+function GetYMLData() {
+  local YamlData
+  local ReturnCount=$2
+  YamlData=$(find "${1}" -type f -name "*.yml" -printf "%f\n" 2>/dev/null | sort )
+  if [[ $ReturnCount == 1 ]]; then
+    YamlData=$(echo "${YamlData}" | wc -l )
+  fi
+  echo "${YamlData}"
 }
 
 # Resets project directory paths, conf diffs file for current project
 # $1 (int) - Assigned project number from assembled list
 # $2 (int) - If 1, output current project messaging (defaults to no output)
-UpdateProjDirPaths() {
+function UpdateProjDirPaths() {
   if [[ $2 == 1 ]]; then
     printf "\n\n%s\n" "$(printf "## Project %d - %s ##" "$1" "${PROJECTS_AVAILABLE[$1]}")"
   fi
-  SRC_DIR="${PROJECTS_AVAILABLE[$1]}"
-  ABS_SRC_DIR="${ABS_PROJECTS_DIR}${SRC_DIR}"
-  ABS_SRC_CONF_DIR="${ABS_SRC_DIR}/config"
+  PROJ_DIR="${PROJECTS_AVAILABLE[$1]}"
+  ABS_PROJ_DIR="${ABS_PROJECTS_DIR}${PROJ_DIR}"
+  ABS_PROJ_CONF_DIR="${ABS_PROJ_DIR}/config"
   # shellcheck disable=SC2034
-  OUTPUT_TOTAL="${ABS_SRC_CONF_DIR}/${DIFFS}"
+  OUTPUT_TOTAL="${ABS_PROJ_CONF_DIR}/${DIFFS}"
 }
 
 # Various tasks that do not need any project generation, etc.
-# No params (global shell variables referenced)
-NonDiffsTasks() {
+function NonDiffsTasks() {
   # Just deleting patches? Run and exit (-P option)
   if [[ $PATCH_MODE == -1 ]]; then
     BarrierMajor 1
@@ -179,44 +182,103 @@ NonDiffsTasks() {
     exit 0
   fi
   # Get Drupal spinup date once for CheckConfigAge
-  local CURR_DIR
-  CURR_DIR=$(pwd)
+  local CurrentDir
+  CurrentDir=$(pwd)
   cd "${ABS_WEB_ROOT}" || exit 1
   DRUPAL_DB_INIT_DATE="$(drush sql:query "USE information_schema; SELECT UNIX_TIMESTAMP(CREATE_TIME) FROM information_schema.TABLES WHERE TABLE_SCHEMA = 'ws2' AND TABLE_NAME = 'config' ;")"
-  cd "${CURR_DIR}" || exit 1
+  cd "${CurrentDir}" || exit 1
 }
 
-# Checks active and start config directories' ages and compares to Drupal install timestamp
-# to catch config directories from previous installs.
+# Checks if active & start config dirs are newer than the current Drupal install
 # $1 (str) - Absolute directory to exported configs
 # $2 (str) - Should be "Active" or "Start". No business logic - Informational only)
-CheckConfigAge() {
+function CheckConfigAge() {
   # Verify start_time data to be newer than the current Drupal install (needs to be rebuilt)
-  local CONFIGS
-  local DIRECTORY=$1
-  local CONFIGS_TYPE=$2
-  local CURR_DIR
+  local Configs
+  local ConfigsDir=$1
+  local ConfigsType=$2
+  local CurrentDir
 
-  CURR_DIR=$(pwd)
+  CurrentDir=$(pwd)
   cd "${ABS_WEB_ROOT}" || exit 1
-  CONFIGS=$(ls -At "${DIRECTORY}" | grep -E "^.+.yml$" | head -1 | xargs -I {} stat -c "%W" "${DIRECTORY}"/{})
+  Configs=$(ls -At "${ConfigsDir}" | grep -E "^.+.yml$" | head -1 | xargs -I {} stat -c "%W" "${ConfigsDir}"/{})
   [[ $_V == 1 ]] && BarrierMinor
   # shellcheck disable=SC2086
   Verbose "Drupal spinup: $(date -d @${DRUPAL_DB_INIT_DATE}) - $(TimeToAgo ${DRUPAL_DB_INIT_DATE}) \n"
   # shellcheck disable=SC2086
-  Verbose "${CONFIGS_TYPE} config: $(date -d @${CONFIGS}) - $(TimeToAgo ${CONFIGS})\n"
-  if [[ $(echo "${CONFIGS}") != "" ]]; then
-    if [[ $((CONFIGS-DRUPAL_DB_INIT_DATE)) -le 0 ]]; then
-      Issue "The ${CONFIGS_TYPE} directory's YMLs are older than your Drupal installation timestamp and are likely invalid." "${WCT_WARNING}"
+  Verbose "${ConfigsType} config: $(date -d @${Configs}) - $(TimeToAgo ${Configs})\n"
+  if [[ $(echo "${Configs}") != "" ]]; then
+    if [[ $((Configs-DRUPAL_DB_INIT_DATE)) -le 0 ]]; then
+      Issue "The ${ConfigsType} directory's YMLs are older than your Drupal installation timestamp and are likely invalid." "${WCT_WARNING}"
       Verbose "Did you run this script once with -r, -R, or -Z AFTER reinstalling Drupal to start this ticket?\n\n"
-      EnterToContinue
+      ConfirmToContinue
     else
-      Verbose "OK: Your ${CONFIGS_TYPE} configurations are (likely) populated from this Drupal install.\n"
+      Verbose "OK: Your ${ConfigsType} configurations are (likely) populated from this Drupal install.\n"
     fi
   else
-    Issue "The creation date of the exported ${CONFIGS_TYPE} configs cannot be found. Check the ${CONFIGS_TYPE} configs directory for YML files. Exiting..." "${WCT_ERROR}"
+    Issue "The creation date of the exported ${ConfigsType} configs cannot be found. Check the ${ConfigsType} configs directory for YML files. Exiting..." "${WCT_ERROR}"
     exit 1
   fi
   [[ $_V == 1 ]] && BarrierMinor
-  cd "${CURR_DIR}" || exit 1
+  cd "${CurrentDir}" || exit 1
+}
+
+# Generate bash file with diff commands and execute it to generate diffs
+# $1 (str) - Active configuration directory (Drush exported), absolute
+# $2 (str) - Configuration directory of current project, absolute
+# $3 (str) - Path of diff commands file
+# $4 (str) - Active configuration directory (Drush exported), relative from user root
+# $5 (str) - Generated diffs output file
+# $6 (str) - Project directory
+# $7 (str) - Subdirectory from project's ./config directory, OR "new" OR "modified"
+function GenerateDiffs() {
+  local AbsConfExportDir=$1
+  local AbsProjConfDir=$2
+  local CommandsFile=$3
+  local ConfExportDir=$4
+  local Diffs=$5
+  local ProjDir=$6
+  local Type=$7 # set file path, vs...
+  local TypeOutput=$Type # business/case logic and verbose output text
+  local Demarcator='/'
+  local DiffsPrefix='../'
+  local FilesCount
+  FilesCount=$(echo "${CommandsFile}" | wc -l)
+  if [[ ${TypeOutput} == 'new' || ${TypeOutput} == 'modified' ]]; then # Remove config subdirectory from related paths
+    > "${DIFFS}" # Reset with each run
+    Demarcator=''
+    Type=''
+    DiffsPrefix='./'
+  fi
+
+  FILES_GENERATED+=("${AbsProjConfDir}${Demarcator}${Type}/${CommandsFile}")
+  Verbose "\n"
+  if [[ ${TypeOutput} == 'new' || ${TypeOutput} == 'modified' ]]; then
+    # Generate diffs to add non-project YMLs with different "staged" (<) and active (>) configs
+    Verbose "Checking %s configs by... \n" "${TypeOutput}"
+  else
+    # Diffs for a single project "${ProjDir}"
+    Verbose "Comparing %s/config/%s and %s configs by... \n" "${ProjDir}" "${TypeOutput}" "${ConfExportDir}"
+  fi
+  Verbose " - 1 of 2) Generating %s in %s... " "${CommandsFile}" "${AbsProjConfDir}"
+  perl -pi -e 's/^.*(?<!\.yml)$//g' "${CommandsFile}" && sed -i '/^[[:space:]]*$/d' "${CommandsFile}" && sed -i '/^[[:blank:]]*$/ d' "${CommandsFile}"
+  perl -pi -e "s!^(.+?)\$!diff -uN ${AbsProjConfDir}${Demarcator}${Type}/\$1 ${AbsConfExportDir}/\$1 >> ${DiffsPrefix}${Diffs}!g" "${CommandsFile}"
+  Verbose "DONE\n"
+  if [[ ${TypeOutput} == 'new' || ${TypeOutput} == 'modified' ]]; then
+    Verbose " - 2 of 2) Appending %s YML file diffs to %s/config/%s..." "${TypeOutput}" "${ProjDir}" "${Diffs}"
+  else
+    Verbose " - 2 of 2) Creating %s diffs for %s/config/%s..." "${TypeOutput}" "${ProjDir}" "${Diffs}"
+  fi
+
+  # ALL option logging
+  bash "${CommandsFile}"
+  Verbose "DONE\n"
+
+  # ALL option logging
+  if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
+    echo "##NO-PATCH## - $(Issue "Reviewing ${FilesCount} ${TypeOutput} YML files for review." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
+    Verbose " - ALL bonus) Adding project diff contents to %s..." "${ALL_DIFFS}"
+    cat "${Diffs}" >> "${ALL_DIFFS}"
+    Verbose "DONE\n\n"
+  fi
 }

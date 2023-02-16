@@ -61,7 +61,6 @@ done
 # Random tasks that don't need any project generation, etc. Usually exits script gracefully.
 NonDiffsTasks
 
-# EXEC
 # Get and select project directories
 declare -a PROJECTS_AVAILABLE=()
 declare -a FILES_GENERATED=()
@@ -88,7 +87,7 @@ for i in "${ABS_PROJECTS_DIR}"/* ; do
   fi
 done
 
-# No projects? Die now.
+# No projects == exit
 [[ $KEY == 0 ]] && Issue "No projects found in ${ABS_PROJECTS_DIR}. Exiting...\n" "${WCT_ERROR}" && exit 1
 
 KEY=$((KEY+1)) ## Manually add ALL option
@@ -101,7 +100,7 @@ read -r which_project
 if [[ ${PROJECTS_AVAILABLE[$which_project]} == '' ]]; then
   Issue "Invalid project selection. Closing..." "${WCT_ERROR}"
   exit 1
-elif [[ $which_project == "${KEY}" ]]; then # ALL option
+elif [[ $which_project == "${KEY}" ]]; then # Last (i.e. ALL) option
   FIRST_PROJECT=1
   LAST_PROJECT=$((KEY-1)) # Get 'em all
   # shellcheck disable=SC2153
@@ -115,6 +114,10 @@ fi
 # Conf directories
 PrepConfigDirs
 
+# Initialize for modified YML file check
+> "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp"
+> "${SCRIPT_ROOT}/_covered_ymls.tmp"
+
 cd "${ABS_CONF_EXPORT_DIR}" || exit 1
 
 # Process each project
@@ -122,13 +125,13 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   UpdateProjDirPaths "${i}" 1
   BarrierMajor
   # ALL option logging
-  [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - Project ${i} of ${LAST_PROJECT}: ${SRC_DIR}" >> "${ALL_DIFFS}"
+  [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - Project ${i} of ${LAST_PROJECT}: ${PROJ_DIR}" >> "${ALL_DIFFS}"
 
   # Drush: Check if project is enabled
   if [[ "${PROJECT_CHECK}" == 1 ]]; then
     # Get project name from *.info.yml file
     cd "${ABS_WEB_ROOT}" || exit 1
-    PROJECT_YML_INFO=$(find "${ABS_SRC_DIR}"/ -maxdepth 1 -type f -printf "%f\n" | grep ".info.yml" | sed -r 's/.info.yml//')
+    PROJECT_YML_INFO=$(find "${ABS_PROJ_DIR}"/ -maxdepth 1 -type f -printf "%f\n" | grep ".info.yml" | sed -r 's/.info.yml//')
     if [[ "${PROJECT_YML_INFO}" != '' ]]; then # Project exists
       if [[ $(drush pm-list --pipe --status=enabled --type=module --no-core | grep "\(${PROJECT_YML_INFO}\)" | cut -f 3) ]]; then
         Verbose "Drush check: %s is enabled.\n" "${PROJECT_YML_INFO}"
@@ -144,20 +147,20 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
       fi
     fi
   fi
-  cd "${ABS_SRC_CONF_DIR}" || exit 1
+  cd "${ABS_PROJ_CONF_DIR}" || exit 1
 
-  # Project's Git branch information for review
+  ## Each project's Git branch review
   BarrierMajor 1
   GIT_BRANCH="$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')"
   GIT_CURRENT_BRANCH=$(git branch --show-current) || exit 1 # Not a Git project
-  printf "%s\nCurrent Git branch: %s\n" "${SRC_DIR}" "${GIT_CURRENT_BRANCH}"
+  printf "%s\nCurrent Git branch: %s\n" "${PROJ_DIR}" "${GIT_CURRENT_BRANCH}"
   BarrierMinor
-  # Check default project branch for updates
+
+  ### Check default project branch for updates
   if [[ ${GIT_CURRENT_BRANCH} != "${GIT_BRANCH}" ]]; then
-    printf "NOTICE: %s is not on the project's %s branch for this comparison.\n" "${SRC_DIR}" "${GIT_BRANCH}"
-    [[ $VERIFY_GIT_STATUS == 1 ]] && EnterToContinue
+    printf "NOTICE: %s is not on the project's %s branch for this comparison.\n" "${PROJ_DIR}" "${GIT_BRANCH}"
+    [[ $VERIFY_GIT_STATUS == 1 ]] && ConfirmToContinue
   fi
-  # Optional Git confirmation step
   GIT_MASTER_STATUS=$(git fetch origin "${GIT_BRANCH}" --dry-run -v 2>&1)
   GIT_MATCH=$(echo "${GIT_MASTER_STATUS}" | grep -i -E "\[up.to.date\]\s+${GIT_BRANCH}\s+")
   if [[ ${GIT_MATCH} =~ "up to date" ]]; then
@@ -165,70 +168,41 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   else
     Issue "${GIT_BRANCH} isn't up to date with remote project. Pull down and merge ${GIT_BRANCH} updates ASAP." "${WCT_WARNING}"
     echo "${GIT_MASTER_STATUS}"
-    [[ $VERIFY_GIT_STATUS == 1 ]] && EnterToContinue
+    [[ $VERIFY_GIT_STATUS == 1 ]] && ConfirmToContinue
   fi
 
-  # Spawn per-project DIFFS file in ${SRC_DIR}/config/ directory
+  ## Spawn per-project DIFFS file in ${PROJ_DIR}/config/ directory
   > "${DIFFS}"
   echo ""
   printf "Checking configration files...\n"
-  FILES_GENERATED+=("${ABS_SRC_CONF_DIR}/${DIFFS}")
+  FILES_GENERATED+=("${ABS_PROJ_CONF_DIR}/${DIFFS}")
 
+  ## Check three different possible conf directories
   for TYPE in "${!CONF_DIR_TYPES[@]}"; do
-    cd "${ABS_SRC_CONF_DIR}" || exit 1
+    cd "${ABS_PROJ_CONF_DIR}" || exit 1
     if [[ -d ./${TYPE} ]]; then
-      if [[ $(GetYMLCount "./${TYPE}" gt 0) ]]; then
+      if [[ $(GetYMLData "./${TYPE}" 1 gt 0) ]]; then
         cd "${TYPE}" || exit 1
-        # Clear and rebuild COMMANDS_FILE for each subdirectory (TYPE)
+        ### Clear and rebuild COMMANDS_FILE for each subdirectory (TYPE)
         > "${COMMANDS_FILE}"
-        FILES_GENERATED+=("${ABS_SRC_CONF_DIR}/${TYPE}/${COMMANDS_FILE}")
-        Verbose "\n"
-        Verbose "Comparing %s/config/%s and %s configs by:\n" "${SRC_DIR}" "${TYPE}" "${CONF_EXPORT_DIR}"
-        Verbose " - 1 of 2) Generating %s in %s/config/%s..." "${COMMANDS_FILE}" "${SRC_DIR}" "${TYPE}"
-
-        ## Catch-all 1 of 2) Add newly generated YML files to a project as diffs (runs only once)
-        if [[ $NEW_YMLS_INSERTED == 0 ]]; then
-          NEW_YML_FILES=$(LC_ALL=C diff -qr "${COPY_EXPORT_START_DIR}" "${ABS_CONF_EXPORT_DIR}" | grep -E "^Only in ${ABS_CONF_EXPORT_DIR}: .+\.yml$" | sed -e 's/^Only in .*:[[:space:]]*//g')
-          if [[ $NEW_YML_FILES != "" ]]; then
-            if [[ $_V == 1 ]]; then
-              echo ""
-              BarrierMajor 3
-              echo "NOTE: The following new YML files have been detected and added to the top of the diff output:"
-              BarrierMinor
-              echo "${NEW_YML_FILES}"
-              EnterToContinue
-              BarrierMajor 3
-            fi
-            cat "${NEW_YML_FILES}" >> "${COMMANDS_FILE}"
-            NEW_YMLS_INSERTED=$((NEW_YMLS_INSERTED+1))
-            NEW_YML_FILES=''
-            # ALL option logging
-            [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - " "$(Issue "Added $(echo "${NEW_YML_FILES}" | wc -l) new YML files for review first." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
-          else
-            Verbose "No new YML files detected."
-          fi
-        fi
-        # Add existing but modified YML files
-        ls -a >> "${COMMANDS_FILE}"
-        # Generates new diffs between the module (<) and the current config output (>)
-        perl -pi -e 's/^.*(?<!\.yml)$//g' "${COMMANDS_FILE}" && sed -i '/^[[:space:]]*$/d' "${COMMANDS_FILE}" && sed -i '/^[[:blank:]]*$/ d' "${COMMANDS_FILE}"
-        perl -pi -e "s!^(.+?)\$!diff -${DIFF_FLAGS} ${ABS_SRC_CONF_DIR}/${TYPE}/\$1 ${ABS_CONF_EXPORT_DIR}/\$1 >> ../${DIFFS}!g" "${COMMANDS_FILE}"
-        Verbose "DONE\n"
-        Verbose " - 2 of 2) Appending new diffs to %s/config/%s..." "${SRC_DIR}" "${DIFFS}"
-        bash "${COMMANDS_FILE}"
-        Verbose "DONE\n"
+        # Add existing and modified project YML files for processing ...
+        ls -A >> "${COMMANDS_FILE}" # in this loop run
+        ls -A >> "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp" # later
+        ################
+        GenerateDiffs "${ABS_CONF_EXPORT_DIR}" "${ABS_PROJ_CONF_DIR}" "${COMMANDS_FILE}" "${CONF_EXPORT_DIR}" "${DIFFS}" "${PROJ_DIR}" "${TYPE}"
+        ################
       else
-        Verbose "The ${SRC_DIR}/config/${TYPE}} folder doesn't have any YML files. Skipping...\n"
+        Verbose "The ${PROJ_DIR}/config/${TYPE}} folder doesn't have any YML files. Skipping...\n"
       fi
     else # Config subdirectory doesn't exist - skip
-      Verbose "INFO: The ${SRC_DIR}/config/${TYPE} folder does not exist. Skipping...\n"
+      Verbose "INFO: The ${PROJ_DIR}/config/${TYPE} folder does not exist. Skipping...\n"
       continue
     fi
   done
-  cd "${ABS_SRC_CONF_DIR}" || exit 1
+  cd "${ABS_PROJ_CONF_DIR}" || exit 1
 
   if [[ -s "${DIFFS}" ]]; then
-    # ALL option logging
+    ## ALL option logging
     if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
       Verbose " - Adding all project diff contents to %s..." "${ALL_DIFFS}"
       cat "${DIFFS}" >> "${ALL_DIFFS}"
@@ -236,32 +210,114 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     fi
 
     ## PATCH MODE
+    # TODO Patch files need ROO outputs appended (currently missing)
     if [[ "${PATCH_MODE}" == 1 ]]; then
-
-      Verbose "** PATCH_MODE **\n\n(Experimental) patch file for ${SRC_DIR} being made..."
+      Verbose "** PATCH_MODE **\n\nPatch file for ${PROJ_DIR} being made..."
       cp "${OUTPUT_TOTAL}" "${OUTPUT_TOTAL}${PATCH_SUFFIX}"
-      # Swap files in diff for patching (patch -R reversal option not working, possibly due to different -pN levels)
+      ### Swap files in diff for patching (patch -R reversal option not working, possibly due to different -pN levels)
       perl -0pi -e "s|(\-\-\-\s)(${USER_DIR_ROOT}\N+?)(\n)(\+\+\+\s)(${USER_DIR_ROOT}\N+?)(\n)|"'$1$5$3$4$2$6'"|g" "${OUTPUT_TOTAL}${PATCH_SUFFIX}"
       Verbose "DONE\n"
 
-      # Generate and store patch command
-      IFS='/' read -r -a Nth <<< "${ABS_SRC_CONF_DIR}/"
-      PATCHES_GENERATED+=("${ABS_SRC_CONF_DIR}/${DIFFS}")
-      PATCH_COMMANDS+=("$(printf "patch -d %s -p%d -Er ./ < %s%s\n" "${ABS_SRC_CONF_DIR}" "${#Nth[@]}" "${OUTPUT_TOTAL}" "${PATCH_SUFFIX}")")
+      ### Generate and store patch command
+      IFS='/' read -r -a Nth <<< "${ABS_PROJ_CONF_DIR}/"
+      PATCHES_GENERATED+=("${ABS_PROJ_CONF_DIR}/${DIFFS}")
+      PATCH_COMMANDS+=("$(printf "patch -d %s -p%d -Er ./ < %s%s\n" "${ABS_PROJ_CONF_DIR}" "${#Nth[@]}" "${OUTPUT_TOTAL}" "${PATCH_SUFFIX}")")
 
-      # ALL option logging TODO remove after other patch work is done
+      ### ALL option logging TODO remove after other patch work is done
       if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
         cat "${OUTPUT_TOTAL}${PATCH_SUFFIX}" >> "${ALL_DIFFS}${PATCH_SUFFIX}"
       fi
     fi
 
   else
-    # TODO Single project "is empty" response?
+    ## TODO Single project "is empty" response?
    [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - $(Issue "${DIFFS} is empty - Nothing to add..." "${WCT_OK}" 1 )" >> "${ALL_DIFFS}"
   fi
 done
 
-# Settings INIT for output
+# BEGIN Run only once (ROO)
+> "${COMMANDS_FILE}.ROO.bash"
+YML_FILES=$(LC_ALL=C diff -qr "${COPY_EXPORT_START_DIR}" "${ABS_CONF_EXPORT_DIR}")
+# TODO combine 1 and 2 into single function?
+
+##------------------ Catch-all 1 of 2) Pull in newly generated YML files to add them
+NEW_YML_FILES=$(echo "${YML_FILES}" | \
+  grep -E "^Only in ${ABS_CONF_EXPORT_DIR}: .+\.yml$" | \
+  sed -e 's/^Only in .*:[[:space:]]*//g')
+if [[ $NEW_YML_FILES != '' ]]; then
+  if [[ $_V == 1 ]]; then
+    echo ""
+    BarrierMajor 3
+    echo " * The following new YML files have been detected and will be added to the ${PROJ_DIR} ${}:"
+    BarrierMinor
+    echo "${NEW_YML_FILES}"
+    ConfirmToContinue "Y"
+    BarrierMajor 3
+  fi
+  echo "${NEW_YML_FILES}" >> "${COMMANDS_FILE}.ROO.bash"
+  # Add new YMLs to already covered list
+  echo "${NEW_YML_FILES}" >> "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp"
+  ############
+  GenerateDiffs "${ABS_CONF_EXPORT_DIR}" "${ABS_PROJ_CONF_DIR}" "${COMMANDS_FILE}.ROO.bash" "${CONF_EXPORT_DIR}" "${DIFFS}" "${PROJ_DIR}" 'new'
+  ############
+  # Add patch mode code here?
+  unset NEW_YML_FILES
+else
+  if [[ $_V == 1 ]]; then
+    BarrierMinor 2
+    Verbose "NOTE: No new, non-project YML files were detected.\n"
+    BarrierMinor
+  fi
+fi
+
+
+
+
+##--------------- Catch-all 2 of 2) Check for modified YMLs not found in ANY project in PROJECTS_DIR
+# TODO Does a non-project, modified YML file check need a flag to skip?
+# TODO Add warning when new files exist only in start config dir (when active is missing a YML file - FILE1, for example)?
+> "${COMMANDS_FILE}.ROO.bash"
+> "${SCRIPT_ROOT}/_all_ymls.tmp"
+echo "${YML_FILES}" | \
+  grep -E "^Files ${COPY_EXPORT_START_DIR}/(.+?\.yml) and ${ABS_CONF_EXPORT_DIR}/(.+?\.yml) differ(\n)?$" | \
+  perl -p -e "s|^Files ${COPY_EXPORT_START_DIR}/(.+?\.yml) and ${ABS_CONF_EXPORT_DIR}/(.+?\.yml) differ(\n)?$|\$1_-_|g" | \
+  perl -p -0 -e "s/_-_/\n/g" | \
+  sort > "${SCRIPT_ROOT}/_modded_ymls.tmp"
+GetYMLData "${ABS_CONF_EXPORT_DIR}" 0 >> "${SCRIPT_ROOT}/_all_ymls.tmp"
+cat "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp" | sort > "${SCRIPT_ROOT}/_covered_ymls.tmp"
+comm --check-order -23 "${SCRIPT_ROOT}/_all_ymls.tmp" "${SCRIPT_ROOT}/_covered_ymls.tmp" > "${SCRIPT_ROOT}/_eligible_ymls.tmp"
+MODDED_YML_FILES=$(comm -1 "${SCRIPT_ROOT}/_eligible_ymls.tmp" "${SCRIPT_ROOT}/_modded_ymls.tmp" | sed -E "s/^\t(.+?)$/\1/g")
+
+if [[ $MODDED_YML_FILES != '' ]]; then
+  if [[ $_V == 1 ]]; then
+    echo ""
+    BarrierMajor 3
+    echo " * The following non-project YML files were modified. Adding their diffs:"
+    BarrierMinor
+    echo "${MODDED_YML_FILES}"
+    ConfirmToContinue
+    BarrierMajor 3
+  fi
+  echo "${MODDED_YML_FILES}" >> "${COMMANDS_FILE}.ROO.bash"
+############
+  GenerateDiffs "${ABS_CONF_EXPORT_DIR}" "${ABS_PROJ_CONF_DIR}" "${COMMANDS_FILE}.ROO.bash" "${CONF_EXPORT_DIR}" "${DIFFS}" "${PROJ_DIR}" 'modified'
+############
+  # Add patch mode code here?
+  unset MODDED_YML_FILES
+else
+  if [[ $_V == 1 ]]; then
+    BarrierMinor 2
+    Verbose "NOTE: No modified, non-project YML files detected.\n"
+    BarrierMinor
+  fi
+fi
+find "${SCRIPT_ROOT}" -maxdepth 1 -type f -name "_*_ymls.tmp" -exec rm {} \; # cleanup of this step's temporary files
+
+############################ END Run only once (ROO)
+
+
+
+# Settings for output
 # ALL option logging
 if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
   FILES_GENERATED+=("${ALL_DIFFS}")
@@ -269,10 +325,10 @@ if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
   OUTPUT_TOTAL="${OUTPUT}"
 else
   OUTPUT="${DIFFS}"
-  OUTPUT_TOTAL="${ABS_SRC_CONF_DIR}/${DIFFS}"
+  OUTPUT_TOTAL="${ABS_PROJ_CONF_DIR}/${DIFFS}"
 fi
 
-# Open diff (individual or ALL) file in TEXT_EDITOR for review
+# Open final diff file (in ./config for single, in SCRIPT_ROOT for all) in TEXT_EDITOR for review
 if [[ -s "${OUTPUT_TOTAL}" ]]; then
   Verbose "\nOpening %s in %s...\n"  "${OUTPUT}" "${TEXT_EDITOR}"
   "${TEXT_EDITOR}" "${OUTPUT_TOTAL}"
@@ -283,10 +339,9 @@ else
   MANUAL_DIFF_REVIEW=0
 fi
 
-# Final _ALL patch cleanup
+# Final _ALL patch processing
 if [[ "${PATCH_MODE}" == 1 ]]; then
   BarrierMajor 3
-
   for ((i=0; i <= ${#PATCH_COMMANDS[@]}; i++)); do
     [[ $i == 0 ]] && echo "The following patch command(s) can applied from each of their ./config directories, on a per-project changes:" && echo ""
     if [[ -f "${PATCHES_GENERATED[$i]}" ]]; then
@@ -298,13 +353,12 @@ if [[ "${PATCH_MODE}" == 1 ]]; then
     sed -i -e 's|^##NO-PATCH##.*$||g' "${OUTPUT_TOTAL}${PATCH_SUFFIX}" && sed -i '/^[[:space:]]*$/d' "${OUTPUT_TOTAL}${PATCH_SUFFIX}" && sed -i '/^[[:blank:]]*$/ d' "${OUTPUT_TOTAL}${PATCH_SUFFIX}"
   fi
   Verbose "\nWARNING:\n"
-  Verbose " - REVIEW ANY PATCHES BEFORE APPLYING! * Don't play around and find out. * \n"
-  Verbose " - Any .patch files generated in the script root (when ALL is selected) cannot be applied.\n"
+  Verbose " - REVIEW ANY PATCHES BEFORE APPLYING! * Don't fool around and find out. * \n"
+  Verbose " - ALL .patch files in the script root (when ALL is selected) cannot be applied at once. Use the patch files in individual projects instead.\n"
   BarrierMajor 3
 fi
 
-## Post-diff review - cleanup
-###############################
+# Post-diff review - cleanup
 echo ""
 if [[ ${#FILES_GENERATED[@]} -ge 1 ]]; then
   if [[ ${MANUAL_DIFF_REVIEW} == 1 ]]; then
@@ -325,6 +379,6 @@ if [[ ${#FILES_GENERATED[@]} -ge 1 ]]; then
   done
 fi
 
-######### END
+# END
 echo "DONE."
 exit 0
