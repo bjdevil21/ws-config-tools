@@ -97,7 +97,7 @@ printf "%s) %s\n" ${KEY} "${PROJECTS_AVAILABLE[$KEY]}"
 [[ ${MISSED_KEY} -gt 0 ]] && Verbose "\n( Ignored %s incompatible directories )\n\n" ${MISSED_KEY}
 printf "Project's configs to compare (Enter 1-%d)? " "${KEY}"
 read -r which_project
-if [[ ${PROJECTS_AVAILABLE[$which_project]} == '' ]]; then
+if [[ -z ${PROJECTS_AVAILABLE[$which_project]} ]]; then # is empty?
   Issue "Invalid project selection. Closing..." "${WCT_ERROR}"
   exit 1
 elif [[ $which_project == "${KEY}" ]]; then # Last (i.e. ALL) option
@@ -133,7 +133,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
     # Get project name from *.info.yml file
     cd "${ABS_WEB_ROOT}" || exit 1
     PROJECT_YML_INFO=$(find "${ABS_PROJ_DIR}"/ -maxdepth 1 -type f -printf "%f\n" | grep ".info.yml" | sed -r 's/.info.yml//')
-    if [[ "${PROJECT_YML_INFO}" != '' ]]; then # Project exists
+    if [[ -n "${PROJECT_YML_INFO}" ]]; then # Project exists; -n equivalent as != ''
       if [[ $(drush pm-list --pipe --status=enabled --type=module --no-core | grep "\(${PROJECT_YML_INFO}\)" | cut -f 3) ]]; then
         Verbose "Drush check: %s is enabled.\n" "${PROJECT_YML_INFO}"
       else
@@ -225,7 +225,7 @@ YML_FILES=$(LC_ALL=C diff -qr "${COPY_EXPORT_START_DIR}" "${ABS_CONF_EXPORT_DIR}
 NEW_YML_FILES=$(echo "${YML_FILES}" | \
   grep -E "^Only in ${ABS_CONF_EXPORT_DIR}: .+\.yml$" | \
   sed -e 's/^Only in .*:[[:space:]]*//g')
-if [[ $NEW_YML_FILES != '' ]]; then
+if [[ -n $NEW_YML_FILES ]]; then # Not empty?
   if [[ $_V == 1 ]]; then
     echo ""
     BarrierMajor 3
@@ -258,7 +258,6 @@ fi
 ##--------------- Catch-all 2 of 2) Check for modified YMLs not found in ANY project in PROJECTS_DIR
 
 # TODO Does a non-project, modified YML file check need a flag to skip?
-# TODO Add warning when new files exist only in start config dir (when active is missing a YML file - FILE1, for example)?
 > "${COMMANDS_FILE}.ROO.modified.bash"
 > "${SCRIPT_ROOT}/_all_ymls.tmp"
 echo "${YML_FILES}" | \
@@ -271,7 +270,7 @@ cat "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp" | sort > "${SCRIPT_ROOT}/_covere
 comm --check-order -23 "${SCRIPT_ROOT}/_all_ymls.tmp" "${SCRIPT_ROOT}/_covered_ymls.tmp" > "${SCRIPT_ROOT}/_eligible_ymls.tmp"
 MODDED_YML_FILES=$(comm -1 "${SCRIPT_ROOT}/_eligible_ymls.tmp" "${SCRIPT_ROOT}/_modded_ymls.tmp" | sed -E "s/^\t(.+?)$/\1/g")
 
-if [[ $MODDED_YML_FILES != '' ]]; then
+if [[ -n $MODDED_YML_FILES ]]; then
   if [[ $_V == 1 ]]; then
     echo ""
     BarrierMajor 3
@@ -286,7 +285,7 @@ if [[ $MODDED_YML_FILES != '' ]]; then
   GenerateDiffs "${ABS_CONF_EXPORT_DIR}" "${ABS_PROJ_CONF_DIR}" "${COMMANDS_FILE}.ROO.modified.bash" "${CONF_EXPORT_DIR}" "${DIFFS}" "${PROJ_DIR}" 'modified'
 
   GenerateOptionalDiffs "${ABS_PROJ_CONF_DIR}" 'modified'
-  # TODO Patch files need ROO outputs appended (currently missing)
+
   unset MODDED_YML_FILES
 else
   if [[ $_V == 1 ]]; then
@@ -295,12 +294,29 @@ else
     BarrierMinor
   fi
 fi
-find "${SCRIPT_ROOT}" -maxdepth 1 -type f -name "_*_ymls.tmp" -exec rm {} \; # cleanup of this step's tmp files
+
+> "${SCRIPT_ROOT}/_all_start_ymls.tmp"
+> "${SCRIPT_ROOT}/_orphaned_start_ymls.tmp"
+GetYMLData "${COPY_EXPORT_START_DIR}" 0 >> "${SCRIPT_ROOT}/_all_start_ymls.tmp"
+ORPHANED_YMLS=$(comm --check-order -23 "${SCRIPT_ROOT}/_all_start_ymls.tmp" "${SCRIPT_ROOT}/_all_ymls.tmp")
+
+if [[ -n $ORPHANED_YMLS ]]; then
+  if [[ $_V == 1 ]]; then
+    echo ""
+    BarrierMajor 3
+    Verbose "NOTICE: The following YML files have disappeared from %s since the start configs were set.\n" ${CONF_EXPORT_DIR}
+    Verbose "These YMLs will not be part of any generated outputs from this script execution.\n"
+    BarrierMinor
+    echo "${ORPHANED_YMLS}"
+    ConfirmToContinue
+    BarrierMajor 3
+  fi
+fi
+
+# cleanup of ROO tmp files
+find "${SCRIPT_ROOT}" -maxdepth 1 -type f -name "_*_ymls.tmp" -exec rm {} \;
 
 ############################ END Run only once (ROO)
-
-
-
 
 # Open final diff file (in ./config for single, in SCRIPT_ROOT for all) in TEXT_EDITOR for review
 if [[ -s "${OUTPUT_TOTAL}" ]]; then

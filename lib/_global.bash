@@ -41,7 +41,7 @@ function BashVersionCheck() {
 function ConsoleTimer() {
   local time=${1}
   local end=$(( SECONDS + time ))
-  if [[ $2 != "" ]]; then
+  if [[ -n $2 ]]; then # not empty or null?
     local message="$2"
   else
     local message=" Time's up."
@@ -161,7 +161,8 @@ function UserRootDirCheck() {
   export OS_ROOT USER_DIR_ROOT
 }
 
-# Verbose() - If -V is passed into the main script, this outputs text that isn't displayed by default.
+# Verbose() - Prints passed in text when a global "verbose" variable ($_V) has been set to 1.
+# $_V is usually linked to a setopts argument like -v.
 # Functions as a shell of printf().
 # $1 (str) - Message to be displayed
 # NOTE: Include line breaks (\n) in any string you pass in.

@@ -207,7 +207,7 @@ function CheckConfigAge() {
   Verbose "Drupal spinup: $(date -d @${DRUPAL_DB_INIT_DATE}) - $(TimeToAgo ${DRUPAL_DB_INIT_DATE}) \n"
   # shellcheck disable=SC2086
   Verbose "${ConfigsType} config: $(date -d @${Configs}) - $(TimeToAgo ${Configs})\n"
-  if [[ $(echo "${Configs}") != "" ]]; then
+  if [[ -n $(echo "${Configs}") ]]; then # Not empty?
     if [[ $((Configs-DRUPAL_DB_INIT_DATE)) -le 0 ]]; then
       Issue "The ${ConfigsType} directory's YMLs are older than your Drupal installation timestamp and are likely invalid." "${WCT_WARNING}"
       Verbose "Did you run this script once with -r, -R, or -Z AFTER reinstalling Drupal to start this ticket?\n\n"
