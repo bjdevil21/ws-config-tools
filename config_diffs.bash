@@ -105,6 +105,7 @@ elif [[ $which_project == "${KEY}" ]]; then # Last (i.e. ALL) option
   LAST_PROJECT=$((KEY-1)) # Get 'em all
   # shellcheck disable=SC2153
   > "${ALL_DIFFS}"
+  FILES_GENERATED+=("${ALL_DIFFS}")
   [[ ${PATCH_MODE} == 1 ]] && > "${ALL_DIFFS}${PATCH_SUFFIX}"
 else # Single project
   FIRST_PROJECT=${which_project}
@@ -124,7 +125,7 @@ cd "${ABS_CONF_EXPORT_DIR}" || exit 1
 for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   UpdateProjDirPaths "${i}" 1
   BarrierMajor
-  # ALL option logging
+  # ALL projects logging
   [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - Project ${i} of ${LAST_PROJECT}: ${PROJ_DIR}" >> "${ALL_DIFFS}"
 
   # Drush: Check if project is enabled
@@ -137,9 +138,9 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
         Verbose "Drush check: %s is enabled.\n" "${PROJECT_YML_INFO}"
       else
         Issue "${PROJECT_YML_INFO} is disabled. " "${WCT_WARNING}"
-        # ALL option logging
+        # ALL projects logging
         if [[ $FIRST_PROJECT != "$LAST_PROJECT" ]]; then
-          echo "##NO-PATCH## - " "$(Issue "${PROJECT_YML_INFO} is disabled. Skipping gratuitous diff output..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
+          echo "##NO-PATCH## - $(Issue "${PROJECT_YML_INFO} is disabled. Skipping gratuitous diff output..." "${WCT_WARNING}" 1)" >> "${ALL_DIFFS}"
           printf "Skipping...\n" && continue
         else
           printf "Closing.\n" && exit 1
@@ -181,7 +182,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   for TYPE in "${!CONF_DIR_TYPES[@]}"; do
     cd "${ABS_PROJ_CONF_DIR}" || exit 1
     if [[ -d ./${TYPE} ]]; then
-      if [[ $(GetYMLData "./${TYPE}" 1 gt 0) ]]; then
+      if [[ $(GetYMLData "./${TYPE}" 1) != 0 ]]; then
         cd "${TYPE}" || exit 1
         ### Clear and rebuild COMMANDS_FILE for each subdirectory (TYPE)
         > "${COMMANDS_FILE}"
@@ -201,42 +202,22 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   done
   cd "${ABS_PROJ_CONF_DIR}" || exit 1
 
-  if [[ -s "${DIFFS}" ]]; then
-    ## ALL option logging
-    if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
-      Verbose " - Adding all project diff contents to %s..." "${ALL_DIFFS}"
-      cat "${DIFFS}" >> "${ALL_DIFFS}"
-      Verbose "DONE\n\n"
-    fi
+  GenerateOptionalDiffs "${ABS_PROJ_CONF_DIR}" ''
 
-    ## PATCH MODE
-    # TODO Patch files need ROO outputs appended (currently missing)
-    if [[ "${PATCH_MODE}" == 1 ]]; then
-      Verbose "** PATCH_MODE **\n\nPatch file for ${PROJ_DIR} being made..."
-      cp "${OUTPUT_TOTAL}" "${OUTPUT_TOTAL}${PATCH_SUFFIX}"
-      ### Swap files in diff for patching (patch -R reversal option not working, possibly due to different -pN levels)
-      perl -0pi -e "s|(\-\-\-\s)(${USER_DIR_ROOT}\N+?)(\n)(\+\+\+\s)(${USER_DIR_ROOT}\N+?)(\n)|"'$1$5$3$4$2$6'"|g" "${OUTPUT_TOTAL}${PATCH_SUFFIX}"
-      Verbose "DONE\n"
-
-      ### Generate and store patch command
-      IFS='/' read -r -a Nth <<< "${ABS_PROJ_CONF_DIR}/"
-      PATCHES_GENERATED+=("${ABS_PROJ_CONF_DIR}/${DIFFS}")
-      PATCH_COMMANDS+=("$(printf "patch -d %s -p%d -Er ./ < %s%s\n" "${ABS_PROJ_CONF_DIR}" "${#Nth[@]}" "${OUTPUT_TOTAL}" "${PATCH_SUFFIX}")")
-
-      ### ALL option logging TODO remove after other patch work is done
-      if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
-        cat "${OUTPUT_TOTAL}${PATCH_SUFFIX}" >> "${ALL_DIFFS}${PATCH_SUFFIX}"
-      fi
-    fi
-
-  else
-    ## TODO Single project "is empty" response?
-   [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - $(Issue "${DIFFS} is empty - Nothing to add..." "${WCT_OK}" 1 )" >> "${ALL_DIFFS}"
-  fi
 done
 
+# Settings for output
+# ALL projects logging
+if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
+  OUTPUT="${ALL_DIFFS}"
+  OUTPUT_TOTAL="${OUTPUT}"
+else
+  OUTPUT="${DIFFS}"
+  OUTPUT_TOTAL="${ABS_PROJ_CONF_DIR}/${DIFFS}"
+fi
+
 # BEGIN Run only once (ROO)
-> "${COMMANDS_FILE}.ROO.bash"
+> "${COMMANDS_FILE}.ROO.new.bash"
 YML_FILES=$(LC_ALL=C diff -qr "${COPY_EXPORT_START_DIR}" "${ABS_CONF_EXPORT_DIR}")
 # TODO combine 1 and 2 into single function?
 
@@ -248,24 +229,25 @@ if [[ $NEW_YML_FILES != '' ]]; then
   if [[ $_V == 1 ]]; then
     echo ""
     BarrierMajor 3
-    echo " * The following new YML files have been detected and will be added to the ${PROJ_DIR} ${}:"
+    echo " * New YML files will be added to the ${PROJ_DIR}:"
     BarrierMinor
     echo "${NEW_YML_FILES}"
     ConfirmToContinue "Y"
     BarrierMajor 3
   fi
-  echo "${NEW_YML_FILES}" >> "${COMMANDS_FILE}.ROO.bash"
+  echo "${NEW_YML_FILES}" >> "${COMMANDS_FILE}.ROO.new.bash"
   # Add new YMLs to already covered list
   echo "${NEW_YML_FILES}" >> "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp"
-  ############
-  GenerateDiffs "${ABS_CONF_EXPORT_DIR}" "${ABS_PROJ_CONF_DIR}" "${COMMANDS_FILE}.ROO.bash" "${CONF_EXPORT_DIR}" "${DIFFS}" "${PROJ_DIR}" 'new'
-  ############
-  # Add patch mode code here?
+
+  GenerateDiffs "${ABS_CONF_EXPORT_DIR}" "${ABS_PROJ_CONF_DIR}" "${COMMANDS_FILE}.ROO.new.bash" "${CONF_EXPORT_DIR}" "${DIFFS}" "${PROJ_DIR}" 'new'
+
+  GenerateOptionalDiffs "${ABS_PROJ_CONF_DIR}" 'new'
+
   unset NEW_YML_FILES
 else
   if [[ $_V == 1 ]]; then
     BarrierMinor 2
-    Verbose "NOTE: No new, non-project YML files were detected.\n"
+    Verbose "NOTE: No new, non-project YML files were detected. Skipping.\n"
     BarrierMinor
   fi
 fi
@@ -274,9 +256,10 @@ fi
 
 
 ##--------------- Catch-all 2 of 2) Check for modified YMLs not found in ANY project in PROJECTS_DIR
+
 # TODO Does a non-project, modified YML file check need a flag to skip?
 # TODO Add warning when new files exist only in start config dir (when active is missing a YML file - FILE1, for example)?
-> "${COMMANDS_FILE}.ROO.bash"
+> "${COMMANDS_FILE}.ROO.modified.bash"
 > "${SCRIPT_ROOT}/_all_ymls.tmp"
 echo "${YML_FILES}" | \
   grep -E "^Files ${COPY_EXPORT_START_DIR}/(.+?\.yml) and ${ABS_CONF_EXPORT_DIR}/(.+?\.yml) differ(\n)?$" | \
@@ -292,41 +275,32 @@ if [[ $MODDED_YML_FILES != '' ]]; then
   if [[ $_V == 1 ]]; then
     echo ""
     BarrierMajor 3
-    echo " * The following non-project YML files were modified. Adding their diffs:"
+    echo " * Non-project, modified YML files to be added:"
     BarrierMinor
     echo "${MODDED_YML_FILES}"
     ConfirmToContinue
     BarrierMajor 3
   fi
-  echo "${MODDED_YML_FILES}" >> "${COMMANDS_FILE}.ROO.bash"
-############
-  GenerateDiffs "${ABS_CONF_EXPORT_DIR}" "${ABS_PROJ_CONF_DIR}" "${COMMANDS_FILE}.ROO.bash" "${CONF_EXPORT_DIR}" "${DIFFS}" "${PROJ_DIR}" 'modified'
-############
-  # Add patch mode code here?
+  echo "${MODDED_YML_FILES}" >> "${COMMANDS_FILE}.ROO.modified.bash"
+
+  GenerateDiffs "${ABS_CONF_EXPORT_DIR}" "${ABS_PROJ_CONF_DIR}" "${COMMANDS_FILE}.ROO.modified.bash" "${CONF_EXPORT_DIR}" "${DIFFS}" "${PROJ_DIR}" 'modified'
+
+  GenerateOptionalDiffs "${ABS_PROJ_CONF_DIR}" 'modified'
+  # TODO Patch files need ROO outputs appended (currently missing)
   unset MODDED_YML_FILES
 else
   if [[ $_V == 1 ]]; then
     BarrierMinor 2
-    Verbose "NOTE: No modified, non-project YML files detected.\n"
+    Verbose "NOTE: No modified, non-project YML files detected. Skipping.\n"
     BarrierMinor
   fi
 fi
-find "${SCRIPT_ROOT}" -maxdepth 1 -type f -name "_*_ymls.tmp" -exec rm {} \; # cleanup of this step's temporary files
+find "${SCRIPT_ROOT}" -maxdepth 1 -type f -name "_*_ymls.tmp" -exec rm {} \; # cleanup of this step's tmp files
 
 ############################ END Run only once (ROO)
 
 
 
-# Settings for output
-# ALL option logging
-if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
-  FILES_GENERATED+=("${ALL_DIFFS}")
-  OUTPUT="${ALL_DIFFS}"
-  OUTPUT_TOTAL="${OUTPUT}"
-else
-  OUTPUT="${DIFFS}"
-  OUTPUT_TOTAL="${ABS_PROJ_CONF_DIR}/${DIFFS}"
-fi
 
 # Open final diff file (in ./config for single, in SCRIPT_ROOT for all) in TEXT_EDITOR for review
 if [[ -s "${OUTPUT_TOTAL}" ]]; then
@@ -350,7 +324,9 @@ if [[ "${PATCH_MODE}" == 1 ]]; then
   done
   if [[ $FIRST_PROJECT != "${LAST_PROJECT}" && -f "${OUTPUT_TOTAL}${PATCH_SUFFIX}" ]]; then
     # Clean out junk comments from _ALL .patch file
-    sed -i -e 's|^##NO-PATCH##.*$||g' "${OUTPUT_TOTAL}${PATCH_SUFFIX}" && sed -i '/^[[:space:]]*$/d' "${OUTPUT_TOTAL}${PATCH_SUFFIX}" && sed -i '/^[[:blank:]]*$/ d' "${OUTPUT_TOTAL}${PATCH_SUFFIX}"
+    sed -i -e 's|^##NO-PATCH##.*$||g' "${OUTPUT_TOTAL}${PATCH_SUFFIX}" && \
+      sed -i '/^[[:space:]]*$/d' "${OUTPUT_TOTAL}${PATCH_SUFFIX}" && \
+      sed -i '/^[[:blank:]]*$/ d' "${OUTPUT_TOTAL}${PATCH_SUFFIX}"
   fi
   Verbose "\nWARNING:\n"
   Verbose " - REVIEW ANY PATCHES BEFORE APPLYING! * Don't fool around and find out. * \n"

@@ -149,7 +149,7 @@ function PrepConfigDirs() {
 function GetYMLData() {
   local YamlData
   local ReturnCount=$2
-  YamlData=$(find "${1}" -type f -name "*.yml" -printf "%f\n" 2>/dev/null | sort )
+  YamlData=$(find "${1}" -maxdepth 1 -type f -name "*.yml" -printf "%f\n" 2>/dev/null | sort )
   if [[ $ReturnCount == 1 ]]; then
     YamlData=$(echo "${YamlData}" | wc -l )
   fi
@@ -242,13 +242,11 @@ function GenerateDiffs() {
   local TypeOutput=$Type # business/case logic and verbose output text
   local Demarcator='/'
   local DiffsPrefix='../'
-  local FilesCount
-  FilesCount=$(echo "${CommandsFile}" | wc -l)
+
   if [[ ${TypeOutput} == 'new' || ${TypeOutput} == 'modified' ]]; then # Remove config subdirectory from related paths
-    > "${DIFFS}" # Reset with each run
     Demarcator=''
     Type=''
-    DiffsPrefix='./'
+    DiffsPrefix="_${TypeOutput}"
   fi
 
   FILES_GENERATED+=("${AbsProjConfDir}${Demarcator}${Type}/${CommandsFile}")
@@ -260,25 +258,72 @@ function GenerateDiffs() {
     # Diffs for a single project "${ProjDir}"
     Verbose "Comparing %s/config/%s and %s configs by... \n" "${ProjDir}" "${TypeOutput}" "${ConfExportDir}"
   fi
-  Verbose " - 1 of 2) Generating %s in %s... " "${CommandsFile}" "${AbsProjConfDir}"
+
+  Verbose " - 1 of 2) Generating %s in %s..." "${CommandsFile}" "${AbsProjConfDir}"
   perl -pi -e 's/^.*(?<!\.yml)$//g' "${CommandsFile}" && sed -i '/^[[:space:]]*$/d' "${CommandsFile}" && sed -i '/^[[:blank:]]*$/ d' "${CommandsFile}"
   perl -pi -e "s!^(.+?)\$!diff -uN ${AbsProjConfDir}${Demarcator}${Type}/\$1 ${AbsConfExportDir}/\$1 >> ${DiffsPrefix}${Diffs}!g" "${CommandsFile}"
   Verbose "DONE\n"
+
   if [[ ${TypeOutput} == 'new' || ${TypeOutput} == 'modified' ]]; then
-    Verbose " - 2 of 2) Appending %s YML file diffs to %s/config/%s..." "${TypeOutput}" "${ProjDir}" "${Diffs}"
+    Verbose " - 2 of 2) Creating %s YML file diffs to %s/config/%s..." "${TypeOutput}" "${ProjDir}" "${DiffsPrefix}${Diffs}"
   else
     Verbose " - 2 of 2) Creating %s diffs for %s/config/%s..." "${TypeOutput}" "${ProjDir}" "${Diffs}"
   fi
-
-  # ALL option logging
   bash "${CommandsFile}"
   Verbose "DONE\n"
+}
 
-  # ALL option logging
+# Append diffs to "ALL" option output files; Optionally generate patch content
+# $1 (str) - "${ABS_PROJ_CONF_DIR}"
+# $2 (str) - TypeOutput ("", new or modified)
+function GenerateOptionalDiffs() {
+  local AbsProjConfDir=$1
+  local TypeOutput=$2
+  local Diffs="${DIFFS}"
+  if [[ ${TypeOutput} == 'new' || ${TypeOutput} == 'modified' ]]; then # Remove config subdirectory from related paths
+    Diffs="_${TypeOutput}${Diffs}"
+    FILES_GENERATED+=("${AbsProjConfDir}/${CommandsFile}.ROO.${TypeOutput}.bash" "${AbsProjConfDir}/${Diffs}")
+  fi
+  if [[ -s "${Diffs}" ]]; then # DIFFS not empty?
+    # ALL projects logging
+    if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
+      if [[ ${TypeOutput} == 'new' || ${TypeOutput} == 'modified' ]]; then # Remove config subdirectory from related paths
+       echo "##NO-PATCH## - $(Issue "Reviewing ${TypeOutput} YML files..." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
+      fi
+      Verbose " - ALL bonus) Adding project diff contents to %s..." "${ALL_DIFFS}"
+      cat "${Diffs}" >> "${ALL_DIFFS}"
+      Verbose "DONE\n\n"
+    # Single project
+    else
+      if [[ ${TypeOutput} == 'new' || ${TypeOutput} == 'modified' ]]; then # append to original diffs file
+        cat "${Diffs}" >> "${DIFFS}"
+      fi
+    fi
+    ## PATCH MODE
+    [[ "${PATCH_MODE}" == 1 ]] && PatchMode
+  else
+    BarrierMinor
+    Verbose "NOTE: No differences were detected in any YML files.\n"
+    BarrierMinor
+   [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - $(Issue "${Diffs} is empty - Nothing to add..." "${WCT_OK}" 1 )" >> "${ALL_DIFFS}"
+  fi
+}
+
+# PATCH MODE - Create patch output and append to appropriate output file
+function PatchMode() {
+  Verbose "** PATCH_MODE **\n\nPatch file for ${PROJ_DIR} being made..."
+  cp "${OUTPUT_TOTAL}" "${OUTPUT_TOTAL}${PATCH_SUFFIX}"
+  ### Swap files in diff for patching (patch -R reversal option not working, possibly due to different -pN levels)
+  perl -0pi -e "s|(\-\-\-\s)(${USER_DIR_ROOT}\N+?)(\n)(\+\+\+\s)(${USER_DIR_ROOT}\N+?)(\n)|"'$1$5$3$4$2$6'"|g" "${OUTPUT_TOTAL}${PATCH_SUFFIX}"
+
+  Verbose "DONE\n"
+  ### Generate and store patch command
+  IFS='/' read -r -a Nth <<< "${ABS_PROJ_CONF_DIR}/"
+  PATCHES_GENERATED+=("${ABS_PROJ_CONF_DIR}/${DIFFS}")
+  PATCH_COMMANDS+=("$(printf "patch -d %s -p%d -Er ./ < %s%s\n" "${ABS_PROJ_CONF_DIR}" "${#Nth[@]}" "${OUTPUT_TOTAL}" "${PATCH_SUFFIX}")")
+
+  ### ALL projects logging
   if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
-    echo "##NO-PATCH## - $(Issue "Reviewing ${FilesCount} ${TypeOutput} YML files for review." "${WCT_OK}" 1)" >> "${ALL_DIFFS}"
-    Verbose " - ALL bonus) Adding project diff contents to %s..." "${ALL_DIFFS}"
-    cat "${Diffs}" >> "${ALL_DIFFS}"
-    Verbose "DONE\n\n"
+    cat "${OUTPUT_TOTAL}${PATCH_SUFFIX}" >> "${ALL_DIFFS}${PATCH_SUFFIX}"
   fi
 }
