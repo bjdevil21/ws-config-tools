@@ -94,7 +94,7 @@ KEY=$((KEY+1)) ## Manually add ALL option
 PROJECTS_AVAILABLE[$KEY]="ALL"
 printf "%s) %s\n" ${KEY} "${PROJECTS_AVAILABLE[$KEY]}"
 
-[[ ${MISSED_KEY} -gt 0 ]] && Verbose "\n( Ignored %s incompatible directories )\n\n" ${MISSED_KEY}
+[[ ${MISSED_KEY} -gt 0 ]] && Verbose "\n** NOTE: ( Ignored %s incompatible directories )\n\n" ${MISSED_KEY}
 printf "Project's configs to compare (Enter 1-%d)? " "${KEY}"
 read -r which_project
 if [[ -z ${PROJECTS_AVAILABLE[$which_project]} ]]; then # is empty?
@@ -219,6 +219,7 @@ fi
 # BEGIN Run only once (ROO)
 > "${COMMANDS_FILE}.ROO.new.bash"
 YML_FILES=$(LC_ALL=C diff -qr "${COPY_EXPORT_START_DIR}" "${ABS_CONF_EXPORT_DIR}")
+
 # TODO combine 1 and 2 into single function?
 
 ##------------------ Catch-all 1 of 2) Pull in newly generated YML files to add them
@@ -226,14 +227,18 @@ NEW_YML_FILES=$(echo "${YML_FILES}" | \
   grep -E "^Only in ${ABS_CONF_EXPORT_DIR}: .+\.yml$" | \
   sed -e 's/^Only in .*:[[:space:]]*//g')
 if [[ -n $NEW_YML_FILES ]]; then # Not empty?
+  YML_COUNT=$(echo "${NEW_YML_FILES}" | wc -l)
   if [[ $_V == 1 ]]; then
     echo ""
     BarrierMajor 3
-    echo " * New YML files will be added to the ${PROJ_DIR}:"
+    echo "  ** NEW FILES FOUND **"
+    echo "  * ${YML_COUNT} new YML files were found and will be added to ${PROJ_DIR}:"
     BarrierMinor
     echo "${NEW_YML_FILES}"
     ConfirmToContinue "Y"
     BarrierMajor 3
+  else
+    echo "NOTICE: ${YML_COUNT} new YML files were found and will be added to ${PROJ_DIR}."
   fi
   echo "${NEW_YML_FILES}" >> "${COMMANDS_FILE}.ROO.new.bash"
   # Add new YMLs to already covered list
@@ -252,9 +257,6 @@ else
   fi
 fi
 
-
-
-
 ##--------------- Catch-all 2 of 2) Check for modified YMLs not found in ANY project in PROJECTS_DIR
 
 # TODO Does a non-project, modified YML file check need a flag to skip?
@@ -266,19 +268,23 @@ echo "${YML_FILES}" | \
   perl -p -0 -e "s/_-_/\n/g" | \
   sort > "${SCRIPT_ROOT}/_modded_ymls.tmp"
 GetYMLData "${ABS_CONF_EXPORT_DIR}" 0 >> "${SCRIPT_ROOT}/_all_ymls.tmp"
-cat "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp" | sort > "${SCRIPT_ROOT}/_covered_ymls.tmp"
+sort < "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp" > "${SCRIPT_ROOT}/_covered_ymls.tmp"
 comm --check-order -23 "${SCRIPT_ROOT}/_all_ymls.tmp" "${SCRIPT_ROOT}/_covered_ymls.tmp" > "${SCRIPT_ROOT}/_eligible_ymls.tmp"
 MODDED_YML_FILES=$(comm -1 "${SCRIPT_ROOT}/_eligible_ymls.tmp" "${SCRIPT_ROOT}/_modded_ymls.tmp" | sed -E "s/^\t(.+?)$/\1/g")
 
 if [[ -n $MODDED_YML_FILES ]]; then
+  YML_COUNT=$(echo "${MODDED_YML_FILES}" | wc -l)
   if [[ $_V == 1 ]]; then
     echo ""
-    BarrierMajor 3
-    echo " * Non-project, modified YML files to be added:"
+    BarrierMajor 2
+    echo "  ** MODIFIED FILES FOUND **"
+    echo "  * ${YML_COUNT} non-project, modified YML files to be added:"
     BarrierMinor
     echo "${MODDED_YML_FILES}"
     ConfirmToContinue
     BarrierMajor 3
+  else
+    echo "NOTICE: ${YML_COUNT} non-project, modified YML files were found and will be added to ${PROJ_DIR}."
   fi
   echo "${MODDED_YML_FILES}" >> "${COMMANDS_FILE}.ROO.modified.bash"
 
@@ -295,21 +301,26 @@ else
   fi
 fi
 
+# Generate one-off warning about YML files that have been deleted from ${CONF_EXPORT_DIR} since the start config directory was built.
 > "${SCRIPT_ROOT}/_all_start_ymls.tmp"
 > "${SCRIPT_ROOT}/_orphaned_start_ymls.tmp"
 GetYMLData "${COPY_EXPORT_START_DIR}" 0 >> "${SCRIPT_ROOT}/_all_start_ymls.tmp"
 ORPHANED_YMLS=$(comm --check-order -23 "${SCRIPT_ROOT}/_all_start_ymls.tmp" "${SCRIPT_ROOT}/_all_ymls.tmp")
 
 if [[ -n $ORPHANED_YMLS ]]; then
+  YML_COUNT=$(echo "${ORPHANED_YMLS}" | wc -l)
   if [[ $_V == 1 ]]; then
     echo ""
     BarrierMajor 3
-    Verbose "NOTICE: The following YML files have disappeared from %s since the start configs were set.\n" ${CONF_EXPORT_DIR}
-    Verbose "These YMLs will not be part of any generated outputs from this script execution.\n"
+    Verbose "NOTICE: ${YML_COUNT} YML files have disappeared from %s since the start configs were set.\n" ${CONF_EXPORT_DIR}
+    Verbose "These YMLs will not be included.\n"
     BarrierMinor
     echo "${ORPHANED_YMLS}"
     ConfirmToContinue
     BarrierMajor 3
+  else
+    echo "NOTICE: ${YML_COUNT} YML files have disappeared from ${CONF_EXPORT_DIR} since the start configs were set."
+    echo "These YMLs will not be included."
   fi
 fi
 
@@ -317,6 +328,9 @@ fi
 find "${SCRIPT_ROOT}" -maxdepth 1 -type f -name "_*_ymls.tmp" -exec rm {} \;
 
 ############################ END Run only once (ROO)
+
+
+
 
 # Open final diff file (in ./config for single, in SCRIPT_ROOT for all) in TEXT_EDITOR for review
 if [[ -s "${OUTPUT_TOTAL}" ]]; then
@@ -329,7 +343,7 @@ else
   MANUAL_DIFF_REVIEW=0
 fi
 
-# Final _ALL patch processing
+# Patch processing, patch commands output
 if [[ "${PATCH_MODE}" == 1 ]]; then
   BarrierMajor 3
   for ((i=0; i <= ${#PATCH_COMMANDS[@]}; i++)); do

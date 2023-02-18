@@ -247,6 +247,7 @@ function GenerateDiffs() {
     Demarcator=''
     Type=''
     DiffsPrefix="_${TypeOutput}"
+    rm "${DiffsPrefix}${Diffs}" && touch "${DiffsPrefix}${Diffs}"
   fi
 
   FILES_GENERATED+=("${AbsProjConfDir}${Demarcator}${Type}/${CommandsFile}")
@@ -310,6 +311,7 @@ function GenerateOptionalDiffs() {
 }
 
 # PATCH MODE - Create patch output and append to appropriate output file
+# $1 (str) - Type of output (default is empty; "new" or "modified" options)
 function PatchMode() {
   Verbose "** PATCH_MODE **\n\nPatch file for ${PROJ_DIR} being made..."
   cp "${OUTPUT_TOTAL}" "${OUTPUT_TOTAL}${PATCH_SUFFIX}"
