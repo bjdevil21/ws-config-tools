@@ -10,19 +10,29 @@ WCT_DEBUG=4
 export WCT_DEBUG WCT_OK WCT_WARNING WCT_ERROR
 
 # BarrierMajor() - Outputs a simple, think barrier
-# No input params
+# $1 (int) - Extra row(s) of padding (1 = above, 2 = below, 3 = both); Defaults to none
+# $2 (int) - If 1, only show in verbose mode (defaults to '' == always display)
 function BarrierMajor() {
-  [[ $1 == 1 || $1 == 3 ]] && echo ""
-  echo '==================================='
-  [[ $1 == 2 || $1 == 3 ]] && echo ""
+  local Margins=$1
+  local OnlyVerbose=$2
+  if [[ -z $OnlyVerbose || ($_V == 1 && $OnlyVerbose == 1) ]]; then
+    [[ $1 == 1 || $1 == 3 ]] && echo ""
+    echo '==================================='
+    [[ $1 == 2 || $1 == 3 ]] && echo ""
+  fi
 }
 
 # BarrierMinor() - Outputs a simple, thin barrier
-# No input params
+# $1 (int) - Padding (1 = above, 2 = below, 3 = both); Defaults to none
+# $2 (int) - If 1, only show in verbose mode (defaults to '' == always display)
 function BarrierMinor() {
-  [[ $1 == 2 || $1 == 3 ]] && echo ""
-  echo '----------------------------'
-  [[ $1 == 2 || $1 == 3 ]] && echo ""
+  local Margins=$1
+  local OnlyVerbose=$2
+  if [[ -z $OnlyVerbose || ($_V == 1 && $OnlyVerbose == 1) ]]; then
+    [[ $Margins == 1 || $Margins == 3 ]] && echo ""
+    echo '----------------------------'
+    [[ $Margins == 2 || $Margins == 3 ]] && echo ""
+  fi
 }
 
 # Check bash version for compatibility
@@ -115,7 +125,8 @@ function TimeToAgo() {
   local   SEC_PER_YEAR=$((60*60*24*365))
 
   local last_unix="$1"
-  local now_unix="$(date +'%s')"
+  local now_unix
+  now_unix="$(date +'%s')"
   local delta_s=$(( now_unix - last_unix ))
 
   if (( delta_s < SEC_PER_MINUTE )); then

@@ -64,8 +64,9 @@ NonDiffsTasks
 # Get and select project directories
 declare -a PROJECTS_AVAILABLE=()
 declare -a FILES_GENERATED=()
-declare -a PATCH_COMMANDS=()
-declare -a PATCHES_GENERATED=()
+declare -A PATCH_COMMANDS=()
+declare -A PATCHES_GENERATED=()
+declare -a PATCHES_ORDER=()
 
 KEY=0
 MISSED_KEY=0
@@ -151,10 +152,9 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   cd "${ABS_PROJ_CONF_DIR}" || exit 1
 
   ## Each project's Git branch review
-  BarrierMajor 1
   GIT_BRANCH="$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')"
   GIT_CURRENT_BRANCH=$(git branch --show-current) || exit 1 # Not a Git project
-  printf "%s\nCurrent Git branch: %s\n" "${PROJ_DIR}" "${GIT_CURRENT_BRANCH}"
+  printf "Current Git branch: %s\n" "${GIT_CURRENT_BRANCH}"
   BarrierMinor
 
   ### Check default project branch for updates
@@ -175,7 +175,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
   ## Spawn per-project DIFFS file in ${PROJ_DIR}/config/ directory
   > "${DIFFS}"
   echo ""
-  printf "Checking configration files...\n"
+  printf "Checking configration files...\n\n"
   FILES_GENERATED+=("${ABS_PROJ_CONF_DIR}/${DIFFS}")
 
   ## Check three different possible conf directories
@@ -189,9 +189,7 @@ for ((i=FIRST_PROJECT; i <= LAST_PROJECT; i++)); do
         # Add existing and modified project YML files for processing ...
         ls -A >> "${COMMANDS_FILE}" # in this loop run
         ls -A >> "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp" # later
-        ################
         GenerateDiffs "${ABS_CONF_EXPORT_DIR}" "${ABS_PROJ_CONF_DIR}" "${COMMANDS_FILE}" "${CONF_EXPORT_DIR}" "${DIFFS}" "${PROJ_DIR}" "${TYPE}"
-        ################
       else
         Verbose "The ${PROJ_DIR}/config/${TYPE}} folder doesn't have any YML files. Skipping...\n"
       fi
@@ -217,37 +215,37 @@ else
 fi
 
 # BEGIN Run only once (ROO)
+#############################
 > "${COMMANDS_FILE}.ROO.new.bash"
 YML_FILES=$(LC_ALL=C diff -qr "${COPY_EXPORT_START_DIR}" "${ABS_CONF_EXPORT_DIR}")
 
-# TODO combine 1 and 2 into single function?
-
 ##------------------ Catch-all 1 of 2) Pull in newly generated YML files to add them
+  echo ""
+  BarrierMajor 0 1
+  echo "** RUN ONLY ONCE: Now checking YMLs not already in the project..."
+  BarrierMajor 0 1
+  [[ $_V != 1 ]] && echo ""
+
 NEW_YML_FILES=$(echo "${YML_FILES}" | \
   grep -E "^Only in ${ABS_CONF_EXPORT_DIR}: .+\.yml$" | \
   sed -e 's/^Only in .*:[[:space:]]*//g')
+
+# TODO combine 1 and 2 into single function?
 if [[ -n $NEW_YML_FILES ]]; then # Not empty?
   YML_COUNT=$(echo "${NEW_YML_FILES}" | wc -l)
+  TYPE_OF_FILE=$(echo "new" | tr "[:lower:]" "[:upper:]")
+  BarrierMinor 0 1
+  echo " -- ${TYPE_OF_FILE} FILES: ${YML_COUNT} new YML files were found and will be added to ${PROJ_DIR} diffs."
   if [[ $_V == 1 ]]; then
-    echo ""
-    BarrierMajor 3
-    echo "  ** NEW FILES FOUND **"
-    echo "  * ${YML_COUNT} new YML files were found and will be added to ${PROJ_DIR}:"
     BarrierMinor
     echo "${NEW_YML_FILES}"
     ConfirmToContinue "Y"
-    BarrierMajor 3
-  else
-    echo "NOTICE: ${YML_COUNT} new YML files were found and will be added to ${PROJ_DIR}."
   fi
   echo "${NEW_YML_FILES}" >> "${COMMANDS_FILE}.ROO.new.bash"
   # Add new YMLs to already covered list
   echo "${NEW_YML_FILES}" >> "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp"
-
   GenerateDiffs "${ABS_CONF_EXPORT_DIR}" "${ABS_PROJ_CONF_DIR}" "${COMMANDS_FILE}.ROO.new.bash" "${CONF_EXPORT_DIR}" "${DIFFS}" "${PROJ_DIR}" 'new'
-
   GenerateOptionalDiffs "${ABS_PROJ_CONF_DIR}" 'new'
-
   unset NEW_YML_FILES
 else
   if [[ $_V == 1 ]]; then
@@ -258,7 +256,6 @@ else
 fi
 
 ##--------------- Catch-all 2 of 2) Check for modified YMLs not found in ANY project in PROJECTS_DIR
-
 # TODO Does a non-project, modified YML file check need a flag to skip?
 > "${COMMANDS_FILE}.ROO.modified.bash"
 > "${SCRIPT_ROOT}/_all_ymls.tmp"
@@ -272,26 +269,20 @@ sort < "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp" > "${SCRIPT_ROOT}/_covered_ym
 comm --check-order -23 "${SCRIPT_ROOT}/_all_ymls.tmp" "${SCRIPT_ROOT}/_covered_ymls.tmp" > "${SCRIPT_ROOT}/_eligible_ymls.tmp"
 MODDED_YML_FILES=$(comm -1 "${SCRIPT_ROOT}/_eligible_ymls.tmp" "${SCRIPT_ROOT}/_modded_ymls.tmp" | sed -E "s/^\t(.+?)$/\1/g")
 
+# TODO combine 1 and 2 into single function?
 if [[ -n $MODDED_YML_FILES ]]; then
   YML_COUNT=$(echo "${MODDED_YML_FILES}" | wc -l)
+  TYPE_OF_FILE=$(echo "modified" | tr "[:lower:]" "[:upper:]")
+  BarrierMinor 0 1
+  echo " -- ${TYPE_OF_FILE} FILES: ${YML_COUNT} modified YML files were found and will be added to the ${PROJ_DIR} diffs."
   if [[ $_V == 1 ]]; then
-    echo ""
-    BarrierMajor 2
-    echo "  ** MODIFIED FILES FOUND **"
-    echo "  * ${YML_COUNT} non-project, modified YML files to be added:"
     BarrierMinor
     echo "${MODDED_YML_FILES}"
-    ConfirmToContinue
-    BarrierMajor 3
-  else
-    echo "NOTICE: ${YML_COUNT} non-project, modified YML files were found and will be added to ${PROJ_DIR}."
+    ConfirmToContinue "Y"
   fi
   echo "${MODDED_YML_FILES}" >> "${COMMANDS_FILE}.ROO.modified.bash"
-
   GenerateDiffs "${ABS_CONF_EXPORT_DIR}" "${ABS_PROJ_CONF_DIR}" "${COMMANDS_FILE}.ROO.modified.bash" "${CONF_EXPORT_DIR}" "${DIFFS}" "${PROJ_DIR}" 'modified'
-
   GenerateOptionalDiffs "${ABS_PROJ_CONF_DIR}" 'modified'
-
   unset MODDED_YML_FILES
 else
   if [[ $_V == 1 ]]; then
@@ -309,27 +300,26 @@ ORPHANED_YMLS=$(comm --check-order -23 "${SCRIPT_ROOT}/_all_start_ymls.tmp" "${S
 
 if [[ -n $ORPHANED_YMLS ]]; then
   YML_COUNT=$(echo "${ORPHANED_YMLS}" | wc -l)
+  BarrierMinor 0 1
+  printf " -- DELETED/MISSING FILES (FYI): %d YML files are gone from %s since the start configs were set.\n" "${YML_COUNT}" "${CONF_EXPORT_DIR}"
   if [[ $_V == 1 ]]; then
-    echo ""
-    BarrierMajor 3
-    Verbose "NOTICE: ${YML_COUNT} YML files have disappeared from %s since the start configs were set.\n" ${CONF_EXPORT_DIR}
-    Verbose "These YMLs will not be included.\n"
     BarrierMinor
     echo "${ORPHANED_YMLS}"
     ConfirmToContinue
-    BarrierMajor 3
-  else
-    echo "NOTICE: ${YML_COUNT} YML files have disappeared from ${CONF_EXPORT_DIR} since the start configs were set."
-    echo "These YMLs will not be included."
+  fi
+else
+  if [[ $_V == 1 ]]; then
+    BarrierMinor 2
+    Verbose " -- DELETED/MISSING FILES: No orphaned YML files detected only in %s.\n" "${CONF_EXPORT_DIR}_start"
+    BarrierMinor
   fi
 fi
 
 # cleanup of ROO tmp files
 find "${SCRIPT_ROOT}" -maxdepth 1 -type f -name "_*_ymls.tmp" -exec rm {} \;
 
-############################ END Run only once (ROO)
-
-
+# END Run only once (ROO)
+###########################
 
 
 # Open final diff file (in ./config for single, in SCRIPT_ROOT for all) in TEXT_EDITOR for review
@@ -346,12 +336,18 @@ fi
 # Patch processing, patch commands output
 if [[ "${PATCH_MODE}" == 1 ]]; then
   BarrierMajor 3
-  for ((i=0; i <= ${#PATCH_COMMANDS[@]}; i++)); do
-    [[ $i == 0 ]] && echo "The following patch command(s) can applied from each of their ./config directories, on a per-project changes:" && echo ""
-    if [[ -f "${PATCHES_GENERATED[$i]}" ]]; then
-      printf " * %s\n" "${PATCH_COMMANDS[$i]}"
-    fi
-  done
+  if [[ ${#PATCH_COMMANDS[@]} -gt 0 ]]; then
+    printf "** PATCHES **\n\n"
+    echo "The following patch command(s) can be applied from each of their ./config directories, on a per-project basis:" && echo ""
+#    for PatchKey in "${!PATCH_COMMANDS[@]}"; do
+    for ((i=0; i < ${#PATCHES_ORDER[@]}; i++)); do
+      PatchKey=${PATCHES_ORDER[$i]}
+      PatchURI="${PATCHES_GENERATED[$PatchKey]}${PATCH_SUFFIX}"
+      if [[ -f "${PatchURI}" ]]; then
+        printf " * %s\n" "${PATCH_COMMANDS[$PatchKey]}"
+      fi
+    done
+  fi
   if [[ $FIRST_PROJECT != "${LAST_PROJECT}" && -f "${OUTPUT_TOTAL}${PATCH_SUFFIX}" ]]; then
     # Clean out junk comments from _ALL .patch file
     sed -i -e 's|^##NO-PATCH##.*$||g' "${OUTPUT_TOTAL}${PATCH_SUFFIX}" && \
@@ -365,7 +361,6 @@ if [[ "${PATCH_MODE}" == 1 ]]; then
 fi
 
 # Post-diff review - cleanup
-echo ""
 if [[ ${#FILES_GENERATED[@]} -ge 1 ]]; then
   if [[ ${MANUAL_DIFF_REVIEW} == 1 ]]; then
     MESSAGE="The following files were kept for review (until the next time this script is run):"
@@ -375,11 +370,19 @@ if [[ ${#FILES_GENERATED[@]} -ge 1 ]]; then
     MESSAGE=$(printf "Deleting generated files")
     [[ "${PATCH_MODE}" == 1 && -f "${OUTPUT_TOTAL}" ]] && MESSAGE="${MESSAGE} (except for ${OUTPUT}${PATCH_SUFFIX})"
     MESSAGE="${MESSAGE}..."
-    CLEANUP='rm -v'
+    CLEANUP='rm -f'
+    [[ $_V == 1 ]] && CLEANUP='rm -v'
   fi
   for ((i=0; i <= ${#FILES_GENERATED[@]}; i++)); do
-    [[ $i == 0 ]] && echo "${MESSAGE}"
-    if [[ -f "${FILES_GENERATED[$i]}" && ( ${MANUAL_DIFF_REVIEW} == 1 || "${CLEANUP}" == 'rm -v' ) ]]; then
+    if [[ $i == 0 ]]; then
+      echo ""
+      if [[ $_V == 1 ]]; then
+        echo "${MESSAGE}"
+      else
+        printf "%s" "${MESSAGE}"
+      fi
+    fi
+    if [[ -f "${FILES_GENERATED[$i]}" && ( ${MANUAL_DIFF_REVIEW} == 1 || "${CLEANUP}" != 'echo' ) ]]; then
       $(echo "${CLEANUP}") "${FILES_GENERATED[$i]}"
     fi
   done

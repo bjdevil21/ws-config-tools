@@ -242,19 +242,19 @@ function GenerateDiffs() {
   local TypeOutput=$Type # business/case logic and verbose output text
   local Demarcator='/'
   local DiffsPrefix='../'
-
   if [[ ${TypeOutput} == 'new' || ${TypeOutput} == 'modified' ]]; then # Remove config subdirectory from related paths
     Demarcator=''
     Type=''
     DiffsPrefix="_${TypeOutput}"
-    rm "${DiffsPrefix}${Diffs}" && touch "${DiffsPrefix}${Diffs}"
+    # shellcheck disable=SC2188
+    > "${DiffsPrefix}${Diffs}"
   fi
 
   FILES_GENERATED+=("${AbsProjConfDir}${Demarcator}${Type}/${CommandsFile}")
   Verbose "\n"
   if [[ ${TypeOutput} == 'new' || ${TypeOutput} == 'modified' ]]; then
     # Generate diffs to add non-project YMLs with different "staged" (<) and active (>) configs
-    Verbose "Checking %s configs by... \n" "${TypeOutput}"
+    Verbose "Processing %s YML files by... \n" "${TypeOutput}"
   else
     # Diffs for a single project "${ProjDir}"
     Verbose "Comparing %s/config/%s and %s configs by... \n" "${ProjDir}" "${TypeOutput}" "${ConfExportDir}"
@@ -264,7 +264,6 @@ function GenerateDiffs() {
   perl -pi -e 's/^.*(?<!\.yml)$//g' "${CommandsFile}" && sed -i '/^[[:space:]]*$/d' "${CommandsFile}" && sed -i '/^[[:blank:]]*$/ d' "${CommandsFile}"
   perl -pi -e "s!^(.+?)\$!diff -uN ${AbsProjConfDir}${Demarcator}${Type}/\$1 ${AbsConfExportDir}/\$1 >> ${DiffsPrefix}${Diffs}!g" "${CommandsFile}"
   Verbose "DONE\n"
-
   if [[ ${TypeOutput} == 'new' || ${TypeOutput} == 'modified' ]]; then
     Verbose " - 2 of 2) Creating %s YML file diffs to %s/config/%s..." "${TypeOutput}" "${ProjDir}" "${DiffsPrefix}${Diffs}"
   else
@@ -303,9 +302,9 @@ function GenerateOptionalDiffs() {
     ## PATCH MODE
     [[ "${PATCH_MODE}" == 1 ]] && PatchMode
   else
-    BarrierMinor
-    Verbose "NOTE: No differences were detected in any YML files.\n"
-    BarrierMinor
+    BarrierMinor 1
+    echo "IMPORTANT: No differences were detected in any project YML files."
+    BarrierMinor 2
    [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - $(Issue "${Diffs} is empty - Nothing to add..." "${WCT_OK}" 1 )" >> "${ALL_DIFFS}"
   fi
 }
@@ -313,17 +312,24 @@ function GenerateOptionalDiffs() {
 # PATCH MODE - Create patch output and append to appropriate output file
 # $1 (str) - Type of output (default is empty; "new" or "modified" options)
 function PatchMode() {
-  Verbose "** PATCH_MODE **\n\nPatch file for ${PROJ_DIR} being made..."
+  local PatchKey
+  [[ $_V == 1 ]] && BarrierMinor
+  Verbose "** PATCH_MODE: Patch file for ${PROJ_DIR} being made..."
   cp "${OUTPUT_TOTAL}" "${OUTPUT_TOTAL}${PATCH_SUFFIX}"
   ### Swap files in diff for patching (patch -R reversal option not working, possibly due to different -pN levels)
   perl -0pi -e "s|(\-\-\-\s)(${USER_DIR_ROOT}\N+?)(\n)(\+\+\+\s)(${USER_DIR_ROOT}\N+?)(\n)|"'$1$5$3$4$2$6'"|g" "${OUTPUT_TOTAL}${PATCH_SUFFIX}"
-
   Verbose "DONE\n"
+  [[ $_V == 1 ]] && BarrierMinor
+
   ### Generate and store patch command
   IFS='/' read -r -a Nth <<< "${ABS_PROJ_CONF_DIR}/"
-  PATCHES_GENERATED+=("${ABS_PROJ_CONF_DIR}/${DIFFS}")
-  PATCH_COMMANDS+=("$(printf "patch -d %s -p%d -Er ./ < %s%s\n" "${ABS_PROJ_CONF_DIR}" "${#Nth[@]}" "${OUTPUT_TOTAL}" "${PATCH_SUFFIX}")")
-
+  PatchKey=$( echo "${ABS_PROJ_CONF_DIR}/${DIFFS}" | sed -E "s|${USER_DIR_ROOT}||g" | sed -E 's|[/_\.]||g' )
+  if [[ -z ${PATCH_COMMANDS["${PatchKey}"]} ]]; then # if doesn't already exist
+    # local Timestamp=$(date +%s%4N) # Unix Timestamp down to 0.0001 sec
+    PATCHES_ORDER+=("${PatchKey}")
+    PATCHES_GENERATED+=([${PatchKey}]="${ABS_PROJ_CONF_DIR}/${DIFFS}")
+    PATCH_COMMANDS+=([${PatchKey}]="$(printf "patch -d %s -p%d -Er ./ < %s%s\n" "${ABS_PROJ_CONF_DIR}" "${#Nth[@]}" "${OUTPUT_TOTAL}" "${PATCH_SUFFIX}")")
+  fi
   ### ALL projects logging
   if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
     cat "${OUTPUT_TOTAL}${PATCH_SUFFIX}" >> "${ALL_DIFFS}${PATCH_SUFFIX}"
