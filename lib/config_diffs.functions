@@ -342,6 +342,7 @@ function PatchMode() {
 # ROO: Catch "$Type"s of YMLs not found in ANY project in $PROJECTS_DIR and add to diffs (and optionally, patches)
 # $1 (str) - new, modified, or orphaned (required)
 function ROOOptionalDiffs() {
+  # TODO Add flag to skip adding modified files, or put in Y/N confirmation instead of "Enter to continue..."
   # All three types
   local Type=$1
   local YmlFiles
