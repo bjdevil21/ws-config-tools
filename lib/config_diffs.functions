@@ -48,10 +48,11 @@ function ProjectVerify() {
 
 # Prepare active configs, start point configs directories
 function PrepConfigDirs() {
+  local YmlCount
   ## Active (EXPORTED) confs dir
   if [[ -d "${ABS_CONF_EXPORT_DIR}" ]]; then
-    YML_COUNT=$(GetYMLData "${ABS_CONF_EXPORT_DIR}" 1)
-    if [[ ${YML_COUNT} != 0 ]]; then
+    YmlCount=$(GetYMLData "${ABS_CONF_EXPORT_DIR}" 1)
+    if [[ ${YmlCount} != 0 ]]; then
       # check active confs age
       CheckConfigAge "${ABS_CONF_EXPORT_DIR}" "Active"
       if [[ ${RERUN_EXPORT} == 1 ]]; then
@@ -303,7 +304,9 @@ function GenerateOptionalDiffs() {
     [[ "${PATCH_MODE}" == 1 ]] && PatchMode
   else
     BarrierMinor 1
-    echo "IMPORTANT: No differences were detected in any project YML files."
+    BarrierMinor
+    echo "** IMPORTANT ** No differences were detected in this project's YML files."
+    BarrierMinor
     BarrierMinor 2
    [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]] && echo "##NO-PATCH## - $(Issue "${Diffs} is empty - Nothing to add..." "${WCT_OK}" 1 )" >> "${ALL_DIFFS}"
   fi
@@ -333,5 +336,74 @@ function PatchMode() {
   ### ALL projects logging
   if [[ $FIRST_PROJECT != "${LAST_PROJECT}" ]]; then
     cat "${OUTPUT_TOTAL}${PATCH_SUFFIX}" >> "${ALL_DIFFS}${PATCH_SUFFIX}"
+  fi
+}
+
+# ROO: Catch "$Type"s of YMLs not found in ANY project in $PROJECTS_DIR and add to diffs (and optionally, patches)
+# $1 (str) - new, modified, or orphaned (required)
+function ROOOptionalDiffs() {
+  # All three types
+  local Type=$1
+  local YmlFiles
+  local YmlCount
+  if [[ ${Type} != 'orphaned' ]]; then
+    > "${COMMANDS_FILE}.ROO.${Type}.bash"
+  fi
+
+  # New only
+  if [[ $Type == 'new' ]]; then
+    YmlFiles=$(echo "${YML_FILES}" | \
+      grep -E "^Only in ${ABS_CONF_EXPORT_DIR}: .+\.yml$" | \
+      sed -e 's/^Only in .*:[[:space:]]*//g')
+  # Modified only
+  elif [[ $Type == 'modified' ]]; then
+    > "${SCRIPT_ROOT}/_all_ymls.tmp"
+    echo "${YML_FILES}" | \
+      grep -E "^Files ${COPY_EXPORT_START_DIR}/(.+?\.yml) and ${ABS_CONF_EXPORT_DIR}/(.+?\.yml) differ(\n)?$" | \
+      perl -p -e "s|^Files ${COPY_EXPORT_START_DIR}/(.+?\.yml) and ${ABS_CONF_EXPORT_DIR}/(.+?\.yml) differ(\n)?$|\$1_-_|g" | \
+      perl -p -0 -e "s/_-_/\n/g" | \
+      sort > "${SCRIPT_ROOT}/_${Type}_ymls.tmp"
+    GetYMLData "${ABS_CONF_EXPORT_DIR}" 0 >> "${SCRIPT_ROOT}/_all_ymls.tmp"
+    sort < "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp" > "${SCRIPT_ROOT}/_covered_ymls.tmp"
+    comm --check-order -23 "${SCRIPT_ROOT}/_all_ymls.tmp" "${SCRIPT_ROOT}/_covered_ymls.tmp" > "${SCRIPT_ROOT}/_eligible_ymls.tmp"
+    YmlFiles=$(comm -1 "${SCRIPT_ROOT}/_eligible_ymls.tmp" "${SCRIPT_ROOT}/_${Type}_ymls.tmp" | sed -E "s/^\t(.+?)$/\1/g")
+  # Orphaned only
+  elif [[ $Type == "orphaned" ]]; then
+    > "${SCRIPT_ROOT}/_all_start_ymls.tmp"
+    > "${SCRIPT_ROOT}/_orphaned_start_ymls.tmp"
+    GetYMLData "${COPY_EXPORT_START_DIR}" 0 >> "${SCRIPT_ROOT}/_all_start_ymls.tmp"
+    YmlFiles=$(comm --check-order -23 "${SCRIPT_ROOT}/_all_start_ymls.tmp" "${SCRIPT_ROOT}/_all_ymls.tmp")
+  fi
+
+  # All three types
+  if [[ -n $YmlFiles ]]; then
+    YmlCount=$(echo "${YmlFiles}" | wc -l)
+    BarrierMajor 1 1
+    local MessageSuffix
+    if [[ ${Type} != 'orphaned' ]]; then
+      MessageSuffix=" and will be added to the ${PROJ_DIR} diffs."
+    else
+      MessageSuffix=". They will be ignored."
+    fi
+    echo " -- $(echo "${Type}" | tr "[:lower:]" "[:upper:]") FILES: ${YmlCount} ${Type} YML files were found${MessageSuffix}"
+    if [[ $_V == 1 ]]; then
+      BarrierMinor
+      echo "${YmlFiles}"
+      ConfirmToContinue "Y"
+    fi
+    # New, Modified only
+    if [[ ${Type} == 'new' || ${Type} == 'modified' ]]; then
+      echo "${YmlFiles}" >> "${COMMANDS_FILE}.ROO.${Type}.bash"
+      # New only
+      [[ ${Type} == 'new' ]] && echo "${NEW_YML_FILES}" >> "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp"
+      GenerateDiffs "${ABS_CONF_EXPORT_DIR}" "${ABS_PROJ_CONF_DIR}" "${COMMANDS_FILE}.ROO.${Type}.bash" "${CONF_EXPORT_DIR}" "${DIFFS}" "${PROJ_DIR}" "${Type}"
+      GenerateOptionalDiffs "${ABS_PROJ_CONF_DIR}" "${Type}"
+    fi
+  else
+    if [[ $_V == 1 ]]; then
+      BarrierMinor 2
+      Verbose "NOTE: No %s non-project YML files detected. Skipping.\n" "${Type}"
+      BarrierMinor
+    fi
   fi
 }

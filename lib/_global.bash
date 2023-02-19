@@ -45,6 +45,13 @@ function BashVersionCheck() {
   fi
 }
 
+# Global pause/continue with Enter key
+function ConfirmToContinue() {
+  printf "\n-- Hit Enter/Return to continue (or Ctrl-C to Cancel and stop)... ** "
+  read -r
+  BarrierMinor
+}
+
 # Timer for console to output a period per second
 # $1 (int) - N of seconds
 # $2 (str) - timer expired message. (Pass in " " for an empty message.)
@@ -63,14 +70,6 @@ function ConsoleTimer() {
   printf "%s\n" "${message}"
 }
 #export -f ConsoleTimer
-
-# Global pause/continue with Enter key
-# No params
-function ConfirmToContinue() {
-  printf "\n-- Hit Enter/Return to continue (or Ctrl-C to Cancel and stop)... ** "
-  read -r
-  BarrierMinor
-}
 
 # Git reset to master branch + pull
 # Must be run in

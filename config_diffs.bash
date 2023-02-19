@@ -214,106 +214,21 @@ else
   OUTPUT_TOTAL="${ABS_PROJ_CONF_DIR}/${DIFFS}"
 fi
 
+
 # BEGIN Run only once (ROO)
 #############################
-> "${COMMANDS_FILE}.ROO.new.bash"
 YML_FILES=$(LC_ALL=C diff -qr "${COPY_EXPORT_START_DIR}" "${ABS_CONF_EXPORT_DIR}")
 
-##------------------ Catch-all 1 of 2) Pull in newly generated YML files to add them
-  echo ""
-  BarrierMajor 0 1
-  echo "** RUN ONLY ONCE: Now checking YMLs not already in the project..."
-  BarrierMajor 0 1
-  [[ $_V != 1 ]] && echo ""
+echo ""
+BarrierMajor 0 1
+echo "** RUN ONLY ONCE: Now checking YMLs not already in the project..."
+BarrierMajor 0 1
+[[ $_V != 1 ]] && echo ""
 
-NEW_YML_FILES=$(echo "${YML_FILES}" | \
-  grep -E "^Only in ${ABS_CONF_EXPORT_DIR}: .+\.yml$" | \
-  sed -e 's/^Only in .*:[[:space:]]*//g')
-
-# TODO combine 1 and 2 into single function?
-if [[ -n $NEW_YML_FILES ]]; then # Not empty?
-  YML_COUNT=$(echo "${NEW_YML_FILES}" | wc -l)
-  TYPE_OF_FILE=$(echo "new" | tr "[:lower:]" "[:upper:]")
-  BarrierMinor 0 1
-  echo " -- ${TYPE_OF_FILE} FILES: ${YML_COUNT} new YML files were found and will be added to ${PROJ_DIR} diffs."
-  if [[ $_V == 1 ]]; then
-    BarrierMinor
-    echo "${NEW_YML_FILES}"
-    ConfirmToContinue "Y"
-  fi
-  echo "${NEW_YML_FILES}" >> "${COMMANDS_FILE}.ROO.new.bash"
-  # Add new YMLs to already covered list
-  echo "${NEW_YML_FILES}" >> "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp"
-  GenerateDiffs "${ABS_CONF_EXPORT_DIR}" "${ABS_PROJ_CONF_DIR}" "${COMMANDS_FILE}.ROO.new.bash" "${CONF_EXPORT_DIR}" "${DIFFS}" "${PROJ_DIR}" 'new'
-  GenerateOptionalDiffs "${ABS_PROJ_CONF_DIR}" 'new'
-  unset NEW_YML_FILES
-else
-  if [[ $_V == 1 ]]; then
-    BarrierMinor 2
-    Verbose "NOTE: No new, non-project YML files were detected. Skipping.\n"
-    BarrierMinor
-  fi
-fi
-
-##--------------- Catch-all 2 of 2) Check for modified YMLs not found in ANY project in PROJECTS_DIR
-# TODO Does a non-project, modified YML file check need a flag to skip?
-> "${COMMANDS_FILE}.ROO.modified.bash"
-> "${SCRIPT_ROOT}/_all_ymls.tmp"
-echo "${YML_FILES}" | \
-  grep -E "^Files ${COPY_EXPORT_START_DIR}/(.+?\.yml) and ${ABS_CONF_EXPORT_DIR}/(.+?\.yml) differ(\n)?$" | \
-  perl -p -e "s|^Files ${COPY_EXPORT_START_DIR}/(.+?\.yml) and ${ABS_CONF_EXPORT_DIR}/(.+?\.yml) differ(\n)?$|\$1_-_|g" | \
-  perl -p -0 -e "s/_-_/\n/g" | \
-  sort > "${SCRIPT_ROOT}/_modded_ymls.tmp"
-GetYMLData "${ABS_CONF_EXPORT_DIR}" 0 >> "${SCRIPT_ROOT}/_all_ymls.tmp"
-sort < "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp" > "${SCRIPT_ROOT}/_covered_ymls.tmp"
-comm --check-order -23 "${SCRIPT_ROOT}/_all_ymls.tmp" "${SCRIPT_ROOT}/_covered_ymls.tmp" > "${SCRIPT_ROOT}/_eligible_ymls.tmp"
-MODDED_YML_FILES=$(comm -1 "${SCRIPT_ROOT}/_eligible_ymls.tmp" "${SCRIPT_ROOT}/_modded_ymls.tmp" | sed -E "s/^\t(.+?)$/\1/g")
-
-# TODO combine 1 and 2 into single function?
-if [[ -n $MODDED_YML_FILES ]]; then
-  YML_COUNT=$(echo "${MODDED_YML_FILES}" | wc -l)
-  TYPE_OF_FILE=$(echo "modified" | tr "[:lower:]" "[:upper:]")
-  BarrierMinor 0 1
-  echo " -- ${TYPE_OF_FILE} FILES: ${YML_COUNT} modified YML files were found and will be added to the ${PROJ_DIR} diffs."
-  if [[ $_V == 1 ]]; then
-    BarrierMinor
-    echo "${MODDED_YML_FILES}"
-    ConfirmToContinue "Y"
-  fi
-  echo "${MODDED_YML_FILES}" >> "${COMMANDS_FILE}.ROO.modified.bash"
-  GenerateDiffs "${ABS_CONF_EXPORT_DIR}" "${ABS_PROJ_CONF_DIR}" "${COMMANDS_FILE}.ROO.modified.bash" "${CONF_EXPORT_DIR}" "${DIFFS}" "${PROJ_DIR}" 'modified'
-  GenerateOptionalDiffs "${ABS_PROJ_CONF_DIR}" 'modified'
-  unset MODDED_YML_FILES
-else
-  if [[ $_V == 1 ]]; then
-    BarrierMinor 2
-    Verbose "NOTE: No modified, non-project YML files detected. Skipping.\n"
-    BarrierMinor
-  fi
-fi
-
-# Generate one-off warning about YML files that have been deleted from ${CONF_EXPORT_DIR} since the start config directory was built.
-> "${SCRIPT_ROOT}/_all_start_ymls.tmp"
-> "${SCRIPT_ROOT}/_orphaned_start_ymls.tmp"
-GetYMLData "${COPY_EXPORT_START_DIR}" 0 >> "${SCRIPT_ROOT}/_all_start_ymls.tmp"
-ORPHANED_YMLS=$(comm --check-order -23 "${SCRIPT_ROOT}/_all_start_ymls.tmp" "${SCRIPT_ROOT}/_all_ymls.tmp")
-
-if [[ -n $ORPHANED_YMLS ]]; then
-  YML_COUNT=$(echo "${ORPHANED_YMLS}" | wc -l)
-  BarrierMinor 0 1
-  printf " -- DELETED/MISSING FILES (FYI): %d YML files are gone from %s since the start configs were set.\n" "${YML_COUNT}" "${CONF_EXPORT_DIR}"
-  if [[ $_V == 1 ]]; then
-    BarrierMinor
-    echo "${ORPHANED_YMLS}"
-    ConfirmToContinue
-  fi
-else
-  if [[ $_V == 1 ]]; then
-    BarrierMinor 2
-    Verbose " -- DELETED/MISSING FILES: No orphaned YML files detected only in %s.\n" "${CONF_EXPORT_DIR}_start"
-    BarrierMinor
-  fi
-fi
+## Build new, modified diffs. List out orphaned files.
+ROOOptionalDiffs 'new'
+ROOOptionalDiffs 'modified'
+ROOOptionalDiffs 'orphaned'
 
 # cleanup of ROO tmp files
 find "${SCRIPT_ROOT}" -maxdepth 1 -type f -name "_*_ymls.tmp" -exec rm {} \;
@@ -321,10 +236,10 @@ find "${SCRIPT_ROOT}" -maxdepth 1 -type f -name "_*_ymls.tmp" -exec rm {} \;
 # END Run only once (ROO)
 ###########################
 
-
 # Open final diff file (in ./config for single, in SCRIPT_ROOT for all) in TEXT_EDITOR for review
 if [[ -s "${OUTPUT_TOTAL}" ]]; then
-  Verbose "\nOpening %s in %s...\n"  "${OUTPUT}" "${TEXT_EDITOR}"
+  Verbose "\nOpening %s in %s"  "${OUTPUT}" "${TEXT_EDITOR}"
+  [[ $_V == 1 ]] && ConsoleTimer 2 " " || Verbose "...\n"
   "${TEXT_EDITOR}" "${OUTPUT_TOTAL}"
   Verbose "Review complete.\n"
 else
@@ -339,7 +254,6 @@ if [[ "${PATCH_MODE}" == 1 ]]; then
   if [[ ${#PATCH_COMMANDS[@]} -gt 0 ]]; then
     printf "** PATCHES **\n\n"
     echo "The following patch command(s) can be applied from each of their ./config directories, on a per-project basis:" && echo ""
-#    for PatchKey in "${!PATCH_COMMANDS[@]}"; do
     for ((i=0; i < ${#PATCHES_ORDER[@]}; i++)); do
       PatchKey=${PATCHES_ORDER[$i]}
       PatchURI="${PATCHES_GENERATED[$PatchKey]}${PATCH_SUFFIX}"
