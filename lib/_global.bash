@@ -7,6 +7,8 @@ WCT_WARNING=2
 WCT_OK=3
 WCT_DEBUG=4
 
+WCT_CONFIRM=""
+
 export WCT_DEBUG WCT_OK WCT_WARNING WCT_ERROR
 
 # BarrierMajor() - Outputs a simple, think barrier
@@ -46,10 +48,27 @@ function BashVersionCheck() {
 }
 
 # Global pause/continue with Enter key
+# $1 (str) - optional - $Type (if not empty, do Y/N confirm; default to just hit enter)
+# $2 (mixed) - optional - Default value if Return is hit. Must be Y or N.
 function ConfirmToContinue() {
-  printf "\n-- Hit Enter/Return to continue (or Ctrl-C to Cancel and stop)... ** "
-  read -r
-  BarrierMinor
+  local Request=$1
+  local Default=''
+  local Suffix=''
+  if [[ -n $2 && $2 =~ ^Y|N$ ]]; then
+    Default=$2
+    Suffix="($Default)"
+  fi
+  if [[ -n $1 ]]; then
+    printf '\n-- Do you want to %s - Y/N '"${Suffix}? " "${Request}"
+    read -r WCT_CONFIRM
+    WCT_CONFIRM=$(echo "${WCT_CONFIRM}" | tr "[:lower:]" "[:upper:]")
+    [[ $WCT_CONFIRM == "" ]] && WCT_CONFIRM=$Default
+    BarrierMinor
+  else # default
+    printf "\n-- Hit Enter/Return to continue (or Ctrl-C to Cancel and stop)... ** "
+    read -r
+    BarrierMinor
+  fi
 }
 
 # Timer for console to output a period per second

@@ -15,7 +15,7 @@ source ./lib/config_diffs.functions || exit 1
 . "${USER_DIR_ROOT}"/.bashrc  # Bash FYI - . is the same as source
 
 # OPTIONS
-while getopts "ghmpPrRSvVzZ" option; do
+while getopts "ghmMpPrRSvVzZ" option; do
   case "${option}" in
   g) # Interactive Git branch verification
     VERIFY_GIT_STATUS=1;;
@@ -23,6 +23,8 @@ while getopts "ghmpPrRSvVzZ" option; do
     Help;;
   m) # Keep generated files for manual review
     MANUAL_DIFF_REVIEW=1;;
+  M) # Require manual approval of adding new, modified YMLs that weren't already in the project
+    MANUAL_NONPROJ_APPROVAL=1;;
   p) # Generate patch files from diffs (use 'patch < $<<diffs-file>>
     PATCH_MODE=1;;
   P) # Clean out all existing .patch files
@@ -41,10 +43,12 @@ while getopts "ghmpPrRSvVzZ" option; do
   V) # Verbose output
     _V=1;;
   z) # Do everything (except clear alt config dir *_start - needs -R)
+    MANUAL_NONPROJ_APPROVAL=1
     MANUAL_DIFF_REVIEW=1
     RERUN_EXPORT=1
     VERIFY_GIT_STATUS=1;;
   Z) # Do everything loudly (except clear alt config dir *_start - needs -R)
+    MANUAL_NONPROJ_APPROVAL=1
     MANUAL_DIFF_REVIEW=1
     # shellcheck disable=SC2034
     RERUN_EXPORT=1
@@ -214,27 +218,19 @@ else
   OUTPUT_TOTAL="${ABS_PROJ_CONF_DIR}/${DIFFS}"
 fi
 
-
-# BEGIN Run only once (ROO)
-#############################
+# Run only once (ROO)
 YML_FILES=$(LC_ALL=C diff -qr "${COPY_EXPORT_START_DIR}" "${ABS_CONF_EXPORT_DIR}")
-
 echo ""
 BarrierMajor 0 1
 echo "** RUN ONLY ONCE: Now checking YMLs not already in the project..."
 BarrierMajor 0 1
 [[ $_V != 1 ]] && echo ""
-
 ## Build new, modified diffs. List out orphaned files.
 ROOOptionalDiffs 'new'
 ROOOptionalDiffs 'modified'
 ROOOptionalDiffs 'orphaned'
-
-# cleanup of ROO tmp files
+## cleanup of ROO tmp files
 find "${SCRIPT_ROOT}" -maxdepth 1 -type f -name "_*_ymls.tmp" -exec rm {} \;
-
-# END Run only once (ROO)
-###########################
 
 # Open final diff file (in ./config for single, in SCRIPT_ROOT for all) in TEXT_EDITOR for review
 if [[ -s "${OUTPUT_TOTAL}" ]]; then

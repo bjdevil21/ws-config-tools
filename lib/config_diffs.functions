@@ -23,6 +23,7 @@ function Help() {
   echo ""
   echo "Options:"
   echo "  -m - Keep diff and command files for manual review"
+  echo "  -M - Force manual approval of adding new, modified YMLs that weren't already in the project"
   echo "  -g - Interactively verify Git branch status for each project"
   printf "  -r - Re-run Drush export of active configs into ~/%s \n" "${CONF_EXPORT_DIR}"
   printf "  -R - Runs -r, then regenerates %s (do this ONCE before starting any new task/ticket)\n" "${COPY_EXPORT_START_DIR}"
@@ -347,6 +348,7 @@ function ROOOptionalDiffs() {
   local Type=$1
   local YmlFiles
   local YmlCount
+
   if [[ ${Type} != 'orphaned' ]]; then
     > "${COMMANDS_FILE}.ROO.${Type}.bash"
   fi
@@ -390,15 +392,28 @@ function ROOOptionalDiffs() {
     if [[ $_V == 1 ]]; then
       BarrierMinor
       echo "${YmlFiles}"
-      ConfirmToContinue "Y"
     fi
-    # New, Modified only
+    # New + Modified only
     if [[ ${Type} == 'new' || ${Type} == 'modified' ]]; then
-      echo "${YmlFiles}" >> "${COMMANDS_FILE}.ROO.${Type}.bash"
-      # New only
-      [[ ${Type} == 'new' ]] && echo "${NEW_YML_FILES}" >> "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp"
-      GenerateDiffs "${ABS_CONF_EXPORT_DIR}" "${ABS_PROJ_CONF_DIR}" "${COMMANDS_FILE}.ROO.${Type}.bash" "${CONF_EXPORT_DIR}" "${DIFFS}" "${PROJ_DIR}" "${Type}"
-      GenerateOptionalDiffs "${ABS_PROJ_CONF_DIR}" "${Type}"
+      if [[ ${MANUAL_NONPROJ_APPROVAL} == 1 ]]; then
+        ConfirmToContinue "include ${Type} YML files to the output" "Y"
+      else
+        [[ $_V == 1 ]] && ConfirmToContinue
+      fi
+      if [[ ${WCT_CONFIRM} == "Y" ]]; then
+        # New only
+        if [[ ${Type} == 'new' ]]; then
+          echo "${YmlFiles}" >> "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp"
+        fi
+        # Both
+        echo "${YmlFiles}" >> "${COMMANDS_FILE}.ROO.${Type}.bash"
+        GenerateDiffs "${ABS_CONF_EXPORT_DIR}" "${ABS_PROJ_CONF_DIR}" "${COMMANDS_FILE}.ROO.${Type}.bash" "${CONF_EXPORT_DIR}" "${DIFFS}" "${PROJ_DIR}" "${Type}"
+        GenerateOptionalDiffs "${ABS_PROJ_CONF_DIR}" "${Type}"
+      else
+        [[ $_V == 1 ]] && echo "OK: Skipping addition of ${Type} YMLs to any diffs."
+      fi
+    else # orphaned
+      [[ $_V == 1 ]] && ConfirmToContinue
     fi
   else
     if [[ $_V == 1 ]]; then
