@@ -7,7 +7,7 @@ WCT_WARNING=2
 WCT_OK=3
 WCT_DEBUG=4
 
-WCT_CONFIRM=""
+WCT_CONFIRM="Y"
 
 export WCT_DEBUG WCT_OK WCT_WARNING WCT_ERROR
 
@@ -49,25 +49,25 @@ function BashVersionCheck() {
 
 # Global pause/continue with Enter key
 # $1 (str) - optional - $Type (if not empty, do Y/N confirm; default to just hit enter)
-# $2 (mixed) - optional - Default value if Return is hit. Must be Y or N.
+# $2 (mixed) - optional - Hitting just Enter/Return returns this value. Must be Y or N. Defaults to Y.
 function ConfirmToContinue() {
   local Request=$1
   local Default=''
-  local Suffix=''
   if [[ -n $2 && $2 =~ ^Y|N$ ]]; then
     Default=$2
-    Suffix="($Default)"
+  else
+    Default="Y"
   fi
   if [[ -n $1 ]]; then
-    printf '\n-- Do you want to %s - Y/N '"${Suffix}? " "${Request}"
+    printf '\n-- Do you want to %s? Y/N '"(${Default}) " "${Request}"
     read -r WCT_CONFIRM
     WCT_CONFIRM=$(echo "${WCT_CONFIRM}" | tr "[:lower:]" "[:upper:]")
-    [[ $WCT_CONFIRM == "" ]] && WCT_CONFIRM=$Default
-    BarrierMinor
+    [[ $WCT_CONFIRM == "" ]] && WCT_CONFIRM=${Default}
+    echo ""
   else # default
     printf "\n-- Hit Enter/Return to continue (or Ctrl-C to Cancel and stop)... ** "
     read -r
-    BarrierMinor
+    echo ""
   fi
 }
 

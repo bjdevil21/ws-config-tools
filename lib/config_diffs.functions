@@ -398,7 +398,7 @@ function ROOOptionalDiffs() {
       if [[ ${MANUAL_NONPROJ_APPROVAL} == 1 ]]; then
         ConfirmToContinue "include ${Type} YML files to the output" "Y"
       else
-        [[ $_V == 1 ]] && ConfirmToContinue
+        [[ $_V == 1 ]] && ConfirmToContinue "" "Y"
       fi
       if [[ ${WCT_CONFIRM} == "Y" ]]; then
         # New only
