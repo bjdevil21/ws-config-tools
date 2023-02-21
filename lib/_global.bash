@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 # CONSTANTS
+WCT_SCRIPT_ROOT=$(pwd)
+
 ## Issue types for Issue() calls.
 WCT_ERROR=1
 WCT_WARNING=2
@@ -9,7 +11,7 @@ WCT_DEBUG=4
 
 WCT_CONFIRM="Y"
 
-export WCT_DEBUG WCT_OK WCT_WARNING WCT_ERROR
+export WCT_SCRIPT_ROOT WCT_DEBUG WCT_OK WCT_WARNING WCT_ERROR WCT_CONFIRM
 
 # BarrierMajor() - Outputs a simple, think barrier
 # $1 (int) - Extra row(s) of padding (1 = above, 2 = below, 3 = both); Defaults to none
@@ -48,7 +50,7 @@ function BashVersionCheck() {
 }
 
 # Global pause/continue with Enter key
-# $1 (str) - optional - $Type (if not empty, do Y/N confirm; default to just hit enter)
+# $1 (str) - optional - Directive to confirm (if not empty, do Y/N confirm; default to just hit enter)
 # $2 (mixed) - optional - Hitting just Enter/Return returns this value. Must be Y or N. Defaults to Y.
 function ConfirmToContinue() {
   local Request=$1
@@ -59,7 +61,7 @@ function ConfirmToContinue() {
     Default="Y"
   fi
   if [[ -n $1 ]]; then
-    printf '\n-- Do you want to %s? Y/N '"(${Default}) " "${Request}"
+    printf '\n-- Do you want to %s? (Y,N) [%s] ' "${Request}" "${Default}"
     read -r WCT_CONFIRM
     WCT_CONFIRM=$(echo "${WCT_CONFIRM}" | tr "[:lower:]" "[:upper:]")
     [[ $WCT_CONFIRM == "" ]] && WCT_CONFIRM=${Default}

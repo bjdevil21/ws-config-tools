@@ -5,7 +5,7 @@
 # DO NOT CHANGE ANYTHING BELOW THIS LINE
 ###########################################
 
-SCRIPT_ROOT=$(pwd)
+SCRIPT_ROOT=${WCT_SCRIPT_ROOT}
 if [[ -f "${SCRIPT_ROOT}"/user_settings/config_diffs.my.vars ]]; then
   source "${SCRIPT_ROOT}"/user_settings/config_diffs.my.vars
 elif [[ -f "${SCRIPT_ROOT}"/etc/config_diffs.default.vars ]]; then

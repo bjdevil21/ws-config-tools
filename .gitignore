@@ -6,6 +6,7 @@ _ALL*
 _*changes.diff
 _diff_commands*bash
 *_ymls.tmp
+*_engines.tmp
 *.patch
 
 # PHPStorm
