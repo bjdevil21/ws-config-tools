@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+# HELPER FUNCTIONS
+
+source ./lib/engine_deletion.settings || exit 1
+
+# Help() - Output help docs
+function Help() {
+  # Display Help
+  echo ""
+  echo "Elastic Appsearch - ASU Fac/Staff + Student cleanup tool"
+  echo ""
+  echo "This will delete all but that last six engines (three days worth) of fac/staff and students engines."
+  echo ""
+  echo "* You must have an API key to perform this act."
+  echo "* Any accidentally deleted engines may be restoreable from a backup restore in Elastic,"
+  echo "  but there is no easy and immediate undo action."
+  echo ""
+  echo "Options/flags:"
+  echo ""
+  echo " -v - Script ersion"
+  echo " -V - Verbose output mode"
+  echo " -q - Execute on the ${ED_QA} QA environment (defaults to the ${ED_PROD} live environment)"
+  echo " -h - This help message"
+
+  exit 0
+}
