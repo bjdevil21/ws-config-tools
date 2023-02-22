@@ -12,8 +12,10 @@ source ./lib/engine_deletion.functions || exit 1
 . "${USER_DIR_ROOT}"/.bashrc  # Bash FYI - . is the same as source
 
 # OPTIONS
-while getopts "mqhvV" option; do
+while getopts "hmqvV" option; do
   case "${option}" in
+  h) # Outputs help content
+    Help;;
   m) # Manual review
     ED_MANUAL_REVIEW=1
     ;;
@@ -21,8 +23,6 @@ while getopts "mqhvV" option; do
     ED_MODE="${ED_QA}"
     ED_KEY="${QA_AS_API_KEY}"
     ;;
-  h) # Outputs help content
-    Help;;
   v) # Return script version
     echo "${ED_VERSION}"
     exit 0;;
@@ -121,9 +121,14 @@ if [[ ${ED_DEL_ENG} -gt 0 ]]; then
   if [[ ${WCT_CONFIRM} == "Y" ]]; then
     mapfile ED_DELETE_ENGINES < ./_delete_these_engines.tmp
     for jj in "${!ED_DELETE_ENGINES[@]}"; do
-      Verbose "Deleting ${ED_DELETE_ENGINES[$jj]//[$'\t\r\n']}...\n"
-      curl -s -X DELETE "https://${ED_MODE}.ent.us-west-2.aws.found.io/api/as/v1/engines/${ED_DELETE_ENGINES[$jj]//[$'\t\r\n']}" -H 'Content-Type: application/json' -H "Authorization: Bearer $ED_KEY" | jq
-      Verbose "DONE\n"
+      printf "Deleting %s..." "${ED_DELETE_ENGINES[$jj]//[$'\t\r\n']}"
+      if [[ $_V == 1 ]]; then
+        printf "\n"
+        curl -s -X DELETE "https://${ED_MODE}.ent.us-west-2.aws.found.io/api/as/v1/engines/${ED_DELETE_ENGINES[$jj]//[$'\t\r\n']}" -H 'Content-Type: application/json' -H "Authorization: Bearer $ED_KEY" | jq
+      else
+        curl -s -X DELETE "https://${ED_MODE}.ent.us-west-2.aws.found.io/api/as/v1/engines/${ED_DELETE_ENGINES[$jj]//[$'\t\r\n']}" -H 'Content-Type: application/json' -H "Authorization: Bearer $ED_KEY" | jq 1>/dev/null
+      fi
+      printf "DONE\n"
     done
   else
     echo "OK: Skipping engine deletion..."

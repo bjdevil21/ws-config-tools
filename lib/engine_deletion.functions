@@ -18,10 +18,10 @@ function Help() {
   echo ""
   echo "Options/flags:"
   echo ""
+  echo " -q - Execute on the ${ED_QA} QA environment (defaults to the ${ED_PROD} live environment)"
+  echo " -m - Keep generated tmp files w/lists for manual review after script exit"
   echo " -v - Script ersion"
   echo " -V - Verbose output mode"
-  echo " -q - Execute on the ${ED_QA} QA environment (defaults to the ${ED_PROD} live environment)"
   echo " -h - This help message"
-
   exit 0
 }
