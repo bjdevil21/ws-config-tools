@@ -43,7 +43,7 @@ BarrierMajor 2
 
 # 1) Get meta data from GET all engines
 ED_PAGE_DATA=$(curl -s -X GET "${ED_URL}" -H 'Content-Type: application/json' -H "Authorization: Bearer $ED_KEY")
-# echo "${ED_PAGE_DATA}" | jq .
+#echo "${ED_PAGE_DATA}" | jq .
 ED_PAGES=$(echo "${ED_PAGE_DATA}" | jq '.meta.page')
 ED_TOTAL_PAGES=$(echo "${ED_PAGES}" | jq '.total_pages')
 ED_PAGE_SIZE=$(echo "${ED_PAGES}" | jq '.size')
@@ -60,7 +60,7 @@ fi
 [[ $_V == 1 ]] && echo "There are ${ED_TOTAL_RESULTS} total engines spread across ${ED_TOTAL_PAGES} pages. Filtering list down..."
 
 # Run for loop to get ALL engines and cat into file based on total_pages
-for ((ii=1; ii <= ${ED_TOTAL_PAGES}; ii++)); do
+for ((ii=1; ii <= ED_TOTAL_PAGES; ii++)); do
   # -- Manipulate output with jQ to only return engine names that match a certain pattern
   printf "\nChecking page %d of %d engines..." "$ii" "$ED_TOTAL_PAGES"
   curl -s -X GET "${ED_URL}" -H 'Content-Type: application/json' -H "Authorization: Bearer $ED_KEY" -d "{'page':{'current': $ii, 'size': $ED_PAGE_SIZE}}"  | jq -r '.results[].name | match("^(web-dir-.+?-20.*)$", "ig") | .string' \
@@ -90,8 +90,27 @@ perl -pi -e 's/^(\d+?)___(.+?)$/$2/g' ./_all_engines_resorted.tmp && mv ./_all_e
 cp ./_all_engines.tmp ./_delete_these_engines.tmp && sed -n '1,6p' ./_delete_these_engines.tmp > ./_keep_these_engines.tmp && sed -i '1,6d' ./_delete_these_engines.tmp
 
 # Pre-deletion health checks
-ED_KEEP_ENG=$(wc -l < ./_keep_these_engines.tmp)
-ED_DEL_ENG=$(wc -l < ./_delete_these_engines.tmp)
+ED_KEEP_ENG_COUNT=$(wc -l < ./_keep_these_engines.tmp)
+ED_DEL_ENG_COUNT=$(wc -l < ./_delete_these_engines.tmp)
+## Issue: Fewer than 6 total fac/staff and student engines
+if [[ ${ED_KEEP_ENG_COUNT} -lt 6 ]]; then
+  ED_WARN_MSG="Only ${ED_KEEP_ENG_COUNT} "
+  [[ ${ED_KEEP_ENG_COUNT} == 0 ]] && ED_WARN_MSG="No " # No engines??
+  Issue "${ED_WARN_MSG} fac/staff or student engines found. Investigate this ${ED_MODE} shortfall ASAP. No deletions will be done.\n" "${WCT_ERROR}"
+  exit 1
+fi
+## Issue: Some of the "keep engines" don't look healthy
+mapfile ED_KEEP_ENGINES < ./_keep_these_engines.tmp
+for Engine in "${!ED_KEEP_ENGINES[@]}"; do
+  ED_E1="${ED_KEEP_ENGINES[$Engine]//[$'\t\r\n']}"
+  ED_PATTERN='.results[] | select(.name == "'${ED_E1}'") | .document_count'
+  ED_ENGINE_COUNT=$(echo "${ED_PAGE_DATA}" | jq "$ED_PATTERN")
+  if [[ $ED_ENGINE_COUNT -lt ${ED_MIN_THRESHOLD} ]]; then
+    Issue "${Engine} has only ${ED_ENGINE_COUNT} records. Do not delete any engines until this shortfall has been investigated." "${WCT_ERROR}"
+    exit 1
+  fi
+done
+
 if [[ $_V == 1 ]]; then
   BarrierMajor 1
   echo " ** ACTION SUMMARY **"
@@ -99,22 +118,14 @@ if [[ $_V == 1 ]]; then
 else
   echo ""
 fi
-echo "The following ${ED_KEEP_ENG} engines will be kept intact:"
+echo "The following ${ED_KEEP_ENG_COUNT} engines will be kept intact:"
 BarrierMinor
 cat ./_keep_these_engines.tmp
 
-# Issue: Fewer than 6 total fac/staff and student engines
-if [[ ${ED_KEEP_ENG} -lt 6 ]]; then
-  KEEP_WARN_MSG="Only ${ED_KEEP_ENG} "
-  [[ ${ED_KEEP_ENG} == 0 ]] && KEEP_WARN_MSG="No " # No engines??
-  Issue "${KEEP_WARN_MSG} fac/staff or student engines found. Investigate this ${ED_MODE} shortfall ASAP. No deletions will be done.\n" "${WCT_ERROR}"
-  exit 1
-fi
-
 # There are some deleteable engines...
-if [[ ${ED_DEL_ENG} -gt 0 ]]; then
+if [[ ${ED_DEL_ENG_COUNT} -gt 0 ]]; then
   echo ""
-  echo "The following ${ED_DEL_ENG} engines will be DELETED:"
+  echo "The following ${ED_DEL_ENG_COUNT} engines will be DELETED:"
   BarrierMinor
   cat ./_delete_these_engines.tmp
   ConfirmToContinue "delete these engines from ${ED_MODE}" 'N'

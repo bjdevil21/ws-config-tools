@@ -4,13 +4,14 @@
 ED_PROD="asuis"
 ED_QA="asuis-qa-2"
 ED_MANUAL_REVIEW=0
+ED_MIN_THRESHOLD=100000 # Minimum number of docs in fac/staff or student engines
 ED_MODE="${ED_PROD}"
 ED_URL_SUFFIX=".ent.us-west-2.aws.found.io/api/as/v1/engines"
 ED_KEY=${AS_API_KEY} # needs to be set up locally as an ENV variable
 
 # Bash script version
-ED_VERSION=1.0.1
+ED_VERSION=1.1.0
 
-export ED_PROD ED_QA ED_MANUAL_REVIEW ED_URL_SUFFIX ED_KEY
+export ED_PROD ED_QA ED_MANUAL_REVIEW ED_MIN_THRESHOLD ED_URL_SUFFIX ED_KEY
 export ED_MODE
 export ED_VERSION
