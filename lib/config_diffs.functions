@@ -284,7 +284,6 @@ function GenerateOptionalDiffs() {
   local Diffs="${DIFFS}"
   if [[ ${TypeOutput} == 'new' || ${TypeOutput} == 'modified' ]]; then # Remove config subdirectory from related paths
     Diffs="_${TypeOutput}${Diffs}"
-    FILES_GENERATED+=("${AbsProjConfDir}/${CommandsFile}.ROO.${TypeOutput}.bash" "${AbsProjConfDir}/${Diffs}")
   fi
   if [[ -s "${Diffs}" ]]; then # DIFFS not empty?
     # ALL projects logging
@@ -351,6 +350,8 @@ function ROOOptionalDiffs() {
 
   if [[ ${Type} != 'orphaned' ]]; then
     > "${COMMANDS_FILE}.ROO.${Type}.bash"
+    FILES_GENERATED+=("${ABS_PROJ_CONF_DIR}/${Type}${Diffs}")
+    FILES_GENERATED+=("${ABS_PROJ_CONF_DIR}/${COMMANDS_FILE}.ROO.${Type}.bash")
   fi
 
   # New only
@@ -405,7 +406,7 @@ function ROOOptionalDiffs() {
         if [[ ${Type} == 'new' ]]; then
           echo "${YmlFiles}" >> "${SCRIPT_ROOT}/_covered_unsorted_ymls.tmp"
         fi
-        # Both
+        # Both new and modified
         echo "${YmlFiles}" >> "${COMMANDS_FILE}.ROO.${Type}.bash"
         GenerateDiffs "${ABS_CONF_EXPORT_DIR}" "${ABS_PROJ_CONF_DIR}" "${COMMANDS_FILE}.ROO.${Type}.bash" "${CONF_EXPORT_DIR}" "${DIFFS}" "${PROJ_DIR}" "${Type}"
         GenerateOptionalDiffs "${ABS_PROJ_CONF_DIR}" "${Type}"
